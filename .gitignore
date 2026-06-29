@@ -1,0 +1,74 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+# Local agent/app state
+.agents/
+.codex/
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# Python virtual environments and uv
+.venv/
+venv/
+env/
+.python-version
+
+# Jupyter notebooks and notebook checkpoints
+*.ipynb
+.ipynb_checkpoints/
+
+# Local handoff/reference notes
+ENTIRE-NOTEBOOK-SUMMARY.md
+
+# FastAPI/runtime artifacts
+*.log
+logs/
+tmp/
+temp/
+*.sqlite
+*.sqlite3
+
+# Local root-level datasets and generated outputs
+/DATA/
+/school/
+/school_validation_outputs/
+
+# Frontend dependencies and build outputs
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
