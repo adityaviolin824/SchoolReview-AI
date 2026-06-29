@@ -49,7 +49,7 @@ temp/
 /DATA/
 /school/
 /school_validation_outputs/
-
+openai-sample-readme.md
 # Frontend dependencies and build outputs
 node_modules/
 .next/
