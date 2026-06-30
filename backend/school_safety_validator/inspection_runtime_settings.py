@@ -39,6 +39,8 @@ class ValidatorSettings:
     primary_vlm_model: str = "gemini-3.1-flash-lite"
     backup_vlm_model: str = "gpt-4.1-mini"
     escalation_review_model: str = "gpt-4.1-mini"
+    final_aggregation_model: str = "gpt-4.1-mini"
+    final_report_model: str = "gpt-4.1-mini"
     max_gemini_attempts: int = 3
     request_delay_seconds: float = 5.0
     max_concurrent_requests: int = 1

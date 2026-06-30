@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
-from .inspection_data_models import CategoryRunState, ImageAssessmentState
-from .inspection_runtime_settings import ValidatorSettings
+from .inspection_data_models import CategoryRunState, FullInspectionRunState, ImageAssessmentState
+from .inspection_runtime_settings import CATEGORY_NAMES, ValidatorSettings
 
 
 def image_state_to_result(
@@ -112,3 +113,55 @@ def save_all_category_run_summary(run_summary: dict, settings: ValidatorSettings
     run_summary_file = run_output_root / "all_category_run_summary.json"
     run_summary_file.write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
     return run_summary_file
+
+
+def utc_timestamp(timestamp: float) -> str:
+    """Convert a file timestamp into an ISO UTC string."""
+
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+
+def load_category_outputs(
+    settings: ValidatorSettings,
+    full_run_state: FullInspectionRunState | dict | None = None,
+) -> tuple[dict[str, dict], list[dict]]:
+    """Load saved compact category JSON outputs plus source metadata."""
+
+    if full_run_state and full_run_state.get("saved_category_output_files"):
+        source_type = "current_run_state"
+        output_files = {
+            category_name: Path(output_file)
+            for category_name, output_file in full_run_state["saved_category_output_files"].items()
+        }
+    else:
+        source_type = "disk_fallback"
+        category_output_root = settings.output_root / "category_outputs"
+        output_files = {
+            category_name: category_output_root / f"{category_name}_image_assessments.json"
+            for category_name in CATEGORY_NAMES
+        }
+
+    category_outputs = {}
+    source_files = []
+    for category_name, output_file in output_files.items():
+        if not output_file.exists():
+            continue
+
+        stat = output_file.stat()
+        category_outputs[category_name] = json.loads(output_file.read_text(encoding="utf-8"))
+        source_files.append(
+            {
+                "category": category_name,
+                "path": str(output_file),
+                "source_type": source_type,
+                "last_modified_utc": utc_timestamp(stat.st_mtime),
+                "size_bytes": stat.st_size,
+            }
+        )
+
+    if not category_outputs:
+        raise FileNotFoundError(
+            "No category output JSON files were found. Run category inspection before final aggregation."
+        )
+
+    return category_outputs, source_files

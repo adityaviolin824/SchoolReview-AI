@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,6 +74,23 @@ def should_retry_gemini_error(error: Exception) -> bool:
     error_text = str(error).lower()
     retry_markers = ["429", "resource_exhausted", "503", "unavailable", "timeout", "temporarily", "500"]
     return any(marker in error_text for marker in retry_markers)
+
+
+def require_openai_api_key() -> str:
+    """Return the OpenAI API key needed for final aggregation/report calls."""
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "Missing required environment variable: OPENAI_API_KEY. "
+            "Add it to your shell environment or backend/.env."
+        )
+    return os.environ["OPENAI_API_KEY"]
+
+
+def create_openai_client_from_env() -> OpenAI:
+    """Create a wrapped OpenAI client without requiring Gemini credentials."""
+
+    return wrap_openai(OpenAI(api_key=require_openai_api_key()))
 
 
 async def call_gemini_with_retry(
