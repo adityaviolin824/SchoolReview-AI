@@ -46,11 +46,29 @@ FINAL_AGGREGATION_MODEL = "gpt-4.1-mini"
 FINAL_REPORT_MODEL = "gpt-4.1-mini"
 ```
 
-Gemini is used first for image-level visual assessment. OpenAI `gpt-4.1-mini` is used as a backup if the primary model fails, and as an independent review model when a result is high-risk, unclear, contradictory, or otherwise needs a second pass.
+The model choices are intentionally cost-conscious. The prototype uses relatively inexpensive models so inspection runs can be tested and repeated without making the workflow unnecessarily expensive. Actual running cost depends mainly on the number of images, the complexity of those images, how many images need backup or independent review, and how large the final category/report payloads become.
+
+Gemini is used first for image-level visual assessment. OpenAI `gpt-4.1-mini` is used as a backup if the primary model fails, and as an independent review model when a result is high-risk, unclear, contradictory, low-confidence, or otherwise needs a second pass.
 
 The final aggregation step also uses `gpt-4.1-mini`, but it only receives compact category-level data and deterministic rollups. It is not trusted to count issues from scratch or weaken the computed status floor.
 
 The report-content step is separate. It writes report-ready text, but code validates that it does not change the already validated status, categories, counts, priorities, or disclaimer.
+
+For the current school-condition use case, the categories are fairly clear-cut: ceilings, classrooms, corridors, electrical panels, exteriors, fire extinguishers, staircases, washrooms, and other visible evidence. That makes the task a reasonable fit for smaller models, especially because deterministic code handles the stricter validation work. The outputs should still be treated as AI-assisted review material, not final inspection decisions.
+
+## Why This Approach Works Well
+
+- **Privacy-aware by design:** source images are locally privacy-processed before model calls.
+- **Evidence-first inspection:** model outputs are grounded in visible image evidence.
+- **Safety-claim control:** prompts explicitly prevent unsupported compliance, serviceability, structural, electrical, smell, water-quality, or off-image claims.
+- **Multi-model resilience:** Gemini is primary, while OpenAI is used for backup and independent review.
+- **Human-review friendly:** unclear, risky, failed, contradictory, or low-confidence cases are queued for human review.
+- **Failure-safe pipeline:** failed image jobs are preserved and routed into review instead of silently disappearing.
+- **LangGraph-based image workflow:** each image has auditable routing through privacy, primary, backup, review, and finalization nodes.
+- **Compact category consolidation:** category JSON stays small enough for final school-level reasoning.
+- **Deterministic pre-LLM rollup:** code owns counts, category status floors, and high-level totals before final report writing.
+- **Clean artifact separation:** source data stays in `school/`; generated artifacts stay in `school_validation_outputs/`.
+- **LangSmith observability:** graph and model spans can be inspected for node behavior, latency, token usage, and cost.
 
 ## Inspection Flow
 
@@ -234,25 +252,25 @@ API keys should be provided through environment variables or a local `.env` file
 ```text
 backend/
   school_safety_validator/
-    config.py
-    schemas.py
-    paths.py
-    privacy.py
-    prompts.py
-    model_clients.py
-    model_parsing.py
-    assessment_rules.py
-    graph.py
-    category_runner.py
-    aggregation.py
-    report_content.py
-    report_rendering.py
-    report_validation.py
-    storage.py
+    inspection_runtime_settings.py
+    inspection_data_models.py
+    inspection_file_paths.py
+    image_privacy_preprocessing.py
+    inspection_prompt_templates.py
+    vision_model_provider_clients.py
+    structured_model_response_parsing.py
+    deterministic_assessment_rules.py
+    image_assessment_workflow_graph.py
+    single_category_inspection_runner.py
+    final_verdict_aggregation.py
+    final_report_content_generation.py
+    final_report_artifact_rendering.py
+    final_report_artifact_validation.py
+    inspection_output_storage.py
     api/
-      main.py
-      routes.py
-      models.py
+      fastapi_application.py
+      inspection_api_routes.py
+      inspection_api_models.py
   sample_data/
   utility_files/
   tests/

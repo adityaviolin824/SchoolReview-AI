@@ -31,11 +31,14 @@ env/
 .python-version
 
 # Jupyter notebooks and notebook checkpoints
-*.ipynb
 .ipynb_checkpoints/
+reviewed-updated-simplified-SSV.ipynb
 
 # Local handoff/reference notes
 ENTIRE-NOTEBOOK-SUMMARY.md
+README-v1.md
+README-v2.md
+TO-DO.md
 
 # FastAPI/runtime artifacts
 *.log
@@ -47,8 +50,9 @@ temp/
 
 # Local root-level datasets and generated outputs
 /DATA/
-/school/
+# /school/
 /school_validation_outputs/
+backend/school_validation_outputs/
 openai-sample-readme.md
 # Frontend dependencies and build outputs
 node_modules/
