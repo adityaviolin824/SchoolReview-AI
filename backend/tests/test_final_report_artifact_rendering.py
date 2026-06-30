@@ -3,7 +3,11 @@
 from pathlib import Path
 
 from school_safety_validator import final_report_artifact_rendering
-from school_safety_validator.final_report_artifact_rendering import save_final_report_outputs
+from school_safety_validator.final_report_artifact_rendering import (
+    render_report_html,
+    render_report_markdown,
+    save_final_report_outputs,
+)
 from school_safety_validator.final_report_content_generation import REPORT_DISCLAIMER
 from school_safety_validator.inspection_data_models import FinalReportCategorySection, FinalReportContent
 from school_safety_validator.inspection_runtime_settings import ValidatorSettings
@@ -109,3 +113,17 @@ def test_save_final_report_outputs_writes_and_validates_all_artifacts(monkeypatc
     assert paths["pdf_report"].exists()
     assert paths["report_content_json"].exists()
     assert paths["report_generation_payload"].exists()
+
+
+def test_enterprise_report_renderers_include_status_coverage_and_actions(tmp_path: Path) -> None:
+    html_text = render_report_html(report_content(), metadata(tmp_path), category_packets())
+    markdown_text = render_report_markdown(report_content(), metadata(tmp_path), category_packets())
+
+    assert "Status Dashboard" in markdown_text
+    assert "Category Coverage" in markdown_text
+    assert "Priority Actions" in markdown_text
+    assert "Section-wise Findings" in markdown_text
+    assert "Human review required" in html_text
+    assert "Categories processed" in html_text
+    assert "Priority Actions" in html_text
+    assert "Section-wise Findings" in html_text

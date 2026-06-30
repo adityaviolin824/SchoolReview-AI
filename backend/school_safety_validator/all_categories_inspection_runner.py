@@ -14,7 +14,7 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
-from utils.logger import logging
+from utils.logger import configure_logging, logging
 
 from .deterministic_assessment_rules import init_full_run_state
 from .inspection_output_storage import save_all_category_run_summary
@@ -165,6 +165,7 @@ def parse_category_list(raw_categories: str | None) -> list[str] | None:
 def main() -> None:
     """CLI entrypoint for running all configured categories locally."""
 
+    configure_logging()
     parser = argparse.ArgumentParser(description="Run school inspection image assessment for all categories.")
     parser.add_argument(
         "--categories",

@@ -1,0 +1,33 @@
+{
+  "school": {
+    "name": "Example Government School",
+    "inspection_date": "2026-06-30",
+    "location": "Example District, India"
+  },
+  "sections": [
+    {
+      "section_name": "classroom",
+      "section_comment": "Classroom inspection sample with visible room-condition evidence.",
+      "images": [
+        {
+          "image_path": "school/classroom/images/classroom_001.jpg",
+          "comment": "Field officer noted classroom condition concerns."
+        },
+        {
+          "image_path": "school/classroom/images/classroom_002.jpg",
+          "comment": "Field officer requested visual validation of classroom maintenance condition."
+        }
+      ]
+    },
+    {
+      "section_name": "fire_extinguisher",
+      "section_comment": "Fire extinguisher inspection sample.",
+      "images": [
+        {
+          "image_path": "school/fire_extinguisher/images/fire_extinguisher_001.jpg",
+          "comment": "Field officer noted the extinguisher area should be checked."
+        }
+      ]
+    }
+  ]
+}

@@ -18,22 +18,24 @@ from .inspection_runtime_settings import BACKEND_ROOT, ValidatorSettings
 
 
 SUPPORTED_REPORT_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+REPORT_IMAGE_MIME_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
 
 
 def find_report_cover_image() -> Path | None:
     """Return the first available report cover image, if one exists."""
 
     image_dir = BACKEND_ROOT / "utility_files" / "report_img"
-    return next(
-        iter(
-            sorted(
-                image_path
-                for image_path in image_dir.glob("*")
-                if image_path.suffix.lower() in SUPPORTED_REPORT_IMAGE_EXTENSIONS
-            )
-        ),
-        None,
+    image_paths = sorted(
+        image_path
+        for image_path in image_dir.glob("*")
+        if image_path.suffix.lower() in SUPPORTED_REPORT_IMAGE_EXTENSIONS
     )
+    return image_paths[0] if image_paths else None
 
 
 def image_path_to_data_url(image_path: Path | None) -> str:
@@ -42,12 +44,7 @@ def image_path_to_data_url(image_path: Path | None) -> str:
     if not image_path or not image_path.exists():
         return ""
 
-    mime_type = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-    }.get(image_path.suffix.lower(), "image/png")
+    mime_type = REPORT_IMAGE_MIME_TYPES.get(image_path.suffix.lower(), "image/png")
     image_base64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
     return f"data:{mime_type};base64,{image_base64}"
 
@@ -61,7 +58,7 @@ def status_label(value: str) -> str:
 def markdown_list(items: list[str]) -> str:
     """Render a compact Markdown bullet list."""
 
-    cleaned_items = [item.strip() for item in items if item and item.strip()]
+    cleaned_items = clean_text_items(items)
     if not cleaned_items:
         return "- None recorded."
     return "\n".join(f"- {item}" for item in cleaned_items)
@@ -87,42 +84,247 @@ def build_report_appendix(metadata: dict) -> dict:
     }
 
 
+def clean_text_items(items: list[str]) -> list[str]:
+    """Return non-empty stripped text items."""
+
+    return [item.strip() for item in items if item and item.strip()]
+
+
+def build_category_table_rows(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
+    """Build category table rows shared by Markdown, HTML, and PDF renderers."""
+
+    packet_by_category = {packet["category"]: packet for packet in category_packets}
+    rows = []
+    for section in content.category_sections:
+        packet = packet_by_category[section.category]
+        counts = packet["issue_counts"]
+        rows.append(
+            {
+                "category": section.category,
+                "status": status_label(section.status),
+                "image_count": packet["image_count"],
+                "high": counts.get("high", 0),
+                "medium": counts.get("medium", 0),
+                "low": counts.get("low", 0),
+                "human_review": "Yes" if packet["human_review_required"] else "No",
+            }
+        )
+    return rows
+
+
+def status_class(value: str) -> str:
+    """Map a report status to a printable CSS class."""
+
+    return {
+        "urgent_review_required": "status-urgent",
+        "maintenance_attention_required": "status-attention",
+        "insufficient_evidence": "status-insufficient",
+        "acceptable_with_minor_issues": "status-acceptable",
+        "urgent_review": "status-urgent",
+        "attention_required": "status-attention",
+        "insufficient_evidence": "status-insufficient",
+        "minor_maintenance": "status-minor",
+        "acceptable_visible_condition": "status-acceptable",
+    }.get(value, "status-neutral")
+
+
+def priority_class(value: str) -> str:
+    """Map a priority label to a printable CSS class."""
+
+    return {
+        "urgent": "priority-urgent",
+        "high": "priority-high",
+        "medium": "priority-medium",
+        "low": "priority-low",
+    }.get(value, "priority-low")
+
+
+def evidence_summary(section: object, packet: dict) -> str:
+    """Return compact evidence text from already-validated category data."""
+
+    evidence_refs = clean_text_items(list(getattr(section, "evidence_refs", [])))
+    key_findings = packet.get("key_findings", [])
+    if evidence_refs:
+        return ", ".join(evidence_refs[:3])
+    if key_findings:
+        return ", ".join(clean_text_items([item.get("image_id", "") for item in key_findings])[:3])
+    return "Category-level evidence packet"
+
+
+def build_priority_action_rows(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
+    """Build deterministic action rows from validated category sections."""
+
+    packet_by_category = {packet["category"]: packet for packet in category_packets}
+    rows = []
+    for section in content.category_sections:
+        packet = packet_by_category.get(section.category, {})
+        review_required = "Yes" if packet.get("human_review_required") else "No"
+        for action in clean_text_items(section.recommended_actions):
+            rows.append(
+                {
+                    "priority": status_label(section.priority),
+                    "priority_class": priority_class(section.priority),
+                    "category": section.category,
+                    "issue": section.summary,
+                    "action": action,
+                    "evidence": evidence_summary(section, packet),
+                    "review_required": review_required,
+                }
+            )
+    return rows
+
+
+def build_category_view_sections(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
+    """Prepare deterministic category display fields without changing semantics."""
+
+    packet_by_category = {packet["category"]: packet for packet in category_packets}
+    sections = []
+    for section in content.category_sections:
+        packet = packet_by_category[section.category]
+        sections.append(
+            {
+                "category": section.category,
+                "status": section.status,
+                "status_label": status_label(section.status),
+                "status_class": status_class(section.status),
+                "priority": section.priority,
+                "priority_label": status_label(section.priority),
+                "priority_class": priority_class(section.priority),
+                "summary": section.summary,
+                "image_count": packet["image_count"],
+                "human_review_required": packet["human_review_required"],
+                "issue_counts": packet["issue_counts"],
+                "key_findings": packet.get("key_findings", []),
+                "documentation_gaps": packet.get("documentation_gaps", []),
+                "evidence_refs": clean_text_items(section.evidence_refs),
+                "recommended_actions": clean_text_items(section.recommended_actions),
+            }
+        )
+    return sections
+
+
+def build_global_action_groups(content: FinalReportContent) -> list[dict]:
+    """Prepare validated global action lists for display."""
+
+    return [
+        {"label": "Immediate Actions", "action_items": clean_text_items(content.immediate_actions), "class": "priority-urgent"},
+        {"label": "Maintenance Actions", "action_items": clean_text_items(content.maintenance_actions), "class": "priority-medium"},
+        {
+            "label": "Documentation Follow-ups",
+            "action_items": clean_text_items(content.documentation_followups),
+            "class": "priority-low",
+        },
+    ]
+
+
+def build_report_view_model(content: FinalReportContent, metadata: dict, category_packets: list[dict]) -> dict:
+    """Build deterministic display data for Markdown, HTML, and PDF renderers."""
+
+    processed_categories = clean_text_items(metadata.get("processed_categories", []))
+    not_inspected_categories = clean_text_items(metadata.get("not_inspected_categories", []))
+    total_configured = len(processed_categories) + len(not_inspected_categories)
+    human_review_items = sum(1 for packet in category_packets if packet.get("human_review_required"))
+    issue_counts = {"high": 0, "medium": 0, "low": 0}
+    for packet in category_packets:
+        for severity in issue_counts:
+            issue_counts[severity] += packet.get("issue_counts", {}).get(severity, 0)
+
+    status_text = status_label(content.overall_status)
+    return {
+        "title": content.title,
+        "overall_status": content.overall_status,
+        "overall_status_label": status_text,
+        "overall_status_class": status_class(content.overall_status),
+        "report_status_label": "Provisional" if content.provisional else "Validated Draft",
+        "provisional": content.provisional,
+        "generated_at_utc": metadata["generated_at_utc"],
+        "processed_categories": processed_categories,
+        "not_inspected_categories": not_inspected_categories,
+        "processed_category_count": len(processed_categories),
+        "total_category_count": total_configured,
+        "total_images": metadata["total_images"],
+        "human_review_items": human_review_items,
+        "issue_counts": issue_counts,
+        "deterministic_status_floor": metadata["deterministic_status_floor"],
+        "category_table": build_category_table_rows(content, category_packets),
+        "category_sections": build_category_view_sections(content, category_packets),
+        "priority_action_rows": build_priority_action_rows(content, category_packets),
+        "global_action_groups": build_global_action_groups(content),
+        "executive_summary": clean_text_items(content.executive_summary),
+        "scope_and_inputs": clean_text_items(content.scope_and_inputs),
+        "human_review_notes": clean_text_items(content.human_review_notes),
+        "limitations": clean_text_items(content.limitations),
+        "disclaimer": content.disclaimer,
+        "source_files": metadata["category_output_sources"],
+        "appendix": build_report_appendix(metadata),
+    }
+
+
 def render_report_markdown(content: FinalReportContent, metadata: dict, category_packets: list[dict]) -> str:
     """Render the final report as deterministic Markdown."""
 
-    packet_by_category = {packet["category"]: packet for packet in category_packets}
+    view = build_report_view_model(content, metadata, category_packets)
     category_rows = [
         "| Category | Status | Images | High | Medium | Low | Human Review |",
         "| --- | --- | ---: | ---: | ---: | ---: | --- |",
     ]
-    for section in content.category_sections:
-        packet = packet_by_category[section.category]
-        counts = packet["issue_counts"]
+    for row in view["category_table"]:
         category_rows.append(
             "| "
             + " | ".join(
                 [
-                    markdown_table_value(section.category),
-                    markdown_table_value(status_label(section.status)),
-                    markdown_table_value(packet["image_count"]),
-                    markdown_table_value(counts.get("high", 0)),
-                    markdown_table_value(counts.get("medium", 0)),
-                    markdown_table_value(counts.get("low", 0)),
-                    markdown_table_value("Yes" if packet["human_review_required"] else "No"),
+                    markdown_table_value(row["category"]),
+                    markdown_table_value(row["status"]),
+                    markdown_table_value(row["image_count"]),
+                    markdown_table_value(row["high"]),
+                    markdown_table_value(row["medium"]),
+                    markdown_table_value(row["low"]),
+                    markdown_table_value(row["human_review"]),
+                ]
+            )
+            + " |"
+        )
+
+    action_rows = [
+        "| Priority | Category | Recommended Action | Evidence / Basis | Review Required |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for row in view["priority_action_rows"]:
+        action_rows.append(
+            "| "
+            + " | ".join(
+                [
+                    markdown_table_value(row["priority"]),
+                    markdown_table_value(row["category"]),
+                    markdown_table_value(row["action"]),
+                    markdown_table_value(row["evidence"]),
+                    markdown_table_value(row["review_required"]),
                 ]
             )
             + " |"
         )
 
     category_sections = []
-    for section in content.category_sections:
+    for section in view["category_sections"]:
+        finding_lines = [
+            f"- {finding.get('severity', 'unclear')}: {finding.get('issue_type', '')} - {finding.get('evidence', '')}"
+            for finding in section["key_findings"]
+        ]
+        gap_lines = [
+            f"- {gap.get('image_id', '')}: {gap.get('gap', '')}"
+            for gap in section["documentation_gaps"]
+        ]
         category_sections.append(
-            f"### {section.category}\n\n"
-            f"- Status: {status_label(section.status)}\n"
-            f"- Priority: {status_label(section.priority)}\n\n"
-            f"{section.summary}\n\n"
-            f"Evidence references:\n{markdown_list(section.evidence_refs)}\n\n"
-            f"Recommended actions:\n{markdown_list(section.recommended_actions)}"
+            f"### {section['category']}\n\n"
+            f"- Status: {section['status_label']}\n"
+            f"- Priority: {section['priority_label']}\n"
+            f"- Images reviewed: {section['image_count']}\n"
+            f"- Human review required: {'Yes' if section['human_review_required'] else 'No'}\n\n"
+            f"{section['summary']}\n\n"
+            f"Key findings:\n{markdown_list(finding_lines)}\n\n"
+            f"Evidence references:\n{markdown_list(section['evidence_refs'])}\n\n"
+            f"Documentation gaps:\n{markdown_list(gap_lines)}\n\n"
+            f"Recommended actions:\n{markdown_list(section['recommended_actions'])}"
         )
 
     source_lines = [
@@ -138,20 +340,36 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             *cover_lines,
             f"# {content.title}",
             f"Generated at: {metadata['generated_at_utc']}",
-            "## Overall Verdict\n\n"
+            "## Status Dashboard\n\n"
             f"- Overall status: {content.overall_status}\n"
-            f"- Provisional: {'Yes' if content.provisional else 'No'}\n"
+            f"- Report status: {view['report_status_label']}\n"
+            f"- Categories processed: {view['processed_category_count']} / {view['total_category_count']}\n"
+            f"- Categories not inspected: {len(view['not_inspected_categories'])}\n"
+            f"- Human review items: {view['human_review_items']}\n"
+            f"- Total images: {view['total_images']}\n"
             f"- Deterministic status floor: {metadata['deterministic_status_floor']}",
-            "## Executive Summary\n\n" + markdown_list(content.executive_summary),
-            "## Scope and Inspected Categories\n\n" + markdown_list(content.scope_and_inputs),
+            "## Human Review Notice\n\n"
+            + (
+                "This report is provisional and requires human review before decisions are made."
+                if content.provisional or view["human_review_items"]
+                else "No human review items were recorded in the validated report content."
+            ),
+            "## Executive Summary\n\n" + markdown_list(view["executive_summary"]),
+            "## Category Coverage\n\n"
+            f"Processed categories:\n{markdown_list(view['processed_categories'])}\n\n"
+            f"Not inspected categories:\n{markdown_list(view['not_inspected_categories'])}\n\n"
+            f"Scope notes:\n{markdown_list(view['scope_and_inputs'])}",
             "## Input Provenance\n\n" + "\n".join(source_lines),
             "## Category Summary Table\n\n" + "\n".join(category_rows),
-            "## Immediate Actions\n\n" + markdown_list(content.immediate_actions),
-            "## Maintenance Actions\n\n" + markdown_list(content.maintenance_actions),
-            "## Documentation Follow-ups\n\n" + markdown_list(content.documentation_followups),
-            "## Human Review Notes\n\n" + markdown_list(content.human_review_notes),
-            "## Category-by-Category Findings\n\n" + "\n\n".join(category_sections),
-            "## Limitations and Disclaimer\n\n" + markdown_list(content.limitations) + f"\n\n{content.disclaimer}",
+            "## Priority Actions\n\n" + ("\n".join(action_rows) if view["priority_action_rows"] else "- None recorded."),
+            "## Global Action Lists\n\n"
+            + "\n\n".join(
+                f"### {group['label']}\n\n{markdown_list(group['action_items'])}"
+                for group in view["global_action_groups"]
+            ),
+            "## Human Review Notes\n\n" + markdown_list(view["human_review_notes"]),
+            "## Section-wise Findings\n\n" + "\n\n".join(category_sections),
+            "## Limitations and Disclaimer\n\n" + markdown_list(view["limitations"]) + f"\n\n{content.disclaimer}",
             "## Machine-Readable Appendix\n\n```json\n"
             + json.dumps(build_report_appendix(metadata), indent=2, ensure_ascii=False)
             + "\n```",
@@ -164,88 +382,171 @@ REPORT_HTML_TEMPLATE = """
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>{{ content.title }}</title>
+<title>{{ view.title }}</title>
 <style>
-@page { size: A4; margin: 22mm 20mm; @bottom-center { content: "AI-assisted visual inspection summary, not a safety certification - Page " counter(page) " of " counter(pages); color: #667085; font-size: 8pt; } }
-@page cover { margin: 0; @bottom-center { content: ""; } }
+@page {
+  size: A4;
+  margin: 17mm 15mm 18mm 15mm;
+  @top-left {
+    content: "School Safety Validator";
+    color: #6b7280;
+    font-size: 8.5pt;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    color: #6b7280;
+    font-size: 8.5pt;
+  }
+  @bottom-left {
+    content: "AI-assisted visual inspection summary - not a certification";
+    color: #6b7280;
+    font-size: 8.5pt;
+  }
+}
+@page cover {
+  margin: 0;
+  @top-left { content: ""; }
+  @bottom-left { content: ""; }
+  @bottom-right { content: ""; }
+}
 * { box-sizing: border-box; }
-body { color: #172033; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.48; margin: 0; }
-.cover { background: #071f3d; color: white; min-height: 297mm; padding: 22mm; page: cover; page-break-after: always; position: relative; }
-.cover h1 { color: white; font-size: 33pt; line-height: 1.08; margin: 0 0 7mm; max-width: 170mm; }
-.cover-kicker { color: #9ed0ff; font-size: 10pt; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 6mm; text-transform: uppercase; }
-.cover-subtitle { color: #d8e7f7; font-size: 13pt; max-width: 150mm; }
-.cover-meta { border-left: 4px solid #46b3ff; color: #e8f2ff; font-size: 10.5pt; margin-top: 11mm; padding-left: 6mm; }
-.cover-image { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 8px; margin-top: 12mm; padding: 5mm; }
-.cover-image img { border-radius: 6px; display: block; width: 100%; }
-.cover-footer { bottom: 18mm; color: #a9bfd7; font-size: 9pt; left: 22mm; position: absolute; right: 22mm; }
-h1 { color: #102a43; font-size: 25pt; margin: 0 0 9mm; }
-h2 { border-bottom: 2px solid #d7e3ef; color: #12385b; font-size: 15.5pt; margin-top: 10mm; padding-bottom: 2mm; }
-h3 { color: #23435f; font-size: 12.5pt; margin-top: 7mm; }
-table { border-collapse: collapse; margin: 4mm 0 7mm; width: 100%; }
-th, td { border: 1px solid #c9d6e2; padding: 6px 8px; text-align: left; vertical-align: top; }
-th { background: #eaf2f8; color: #153754; font-weight: 700; }
-tbody tr:nth-child(even) { background: #f8fbfd; }
-.badge { border-radius: 999px; color: white; display: inline-block; font-size: 9pt; font-weight: 700; padding: 4px 10px; text-transform: uppercase; }
-.urgent { background: #b42318; }
-.medium { background: #b54708; }
-.status-ok { background: #027a48; }
-.status-insufficient { background: #667085; }
-.summary-card { background: #f5f9fc; border: 1px solid #d7e3ef; border-left: 5px solid #2474a6; border-radius: 8px; margin: 5mm 0 7mm; padding: 5mm; }
-.category-block { border-top: 1px solid #d7e3ef; padding-top: 5mm; page-break-inside: avoid; }
-.meta { color: #52677a; font-size: 9pt; }
-.disclaimer { background: #fff7ed; border: 1px solid #fed7aa; border-left: 5px solid #f97316; border-radius: 8px; padding: 8px 10px; }
-code, pre { font-family: Consolas, monospace; font-size: 8.5pt; }
-pre { background: #f7fafc; border: 1px solid #d7e3ef; border-radius: 6px; padding: 8px; white-space: pre-wrap; }
+html { color: #182230; font-family: Arial, Helvetica, sans-serif; font-size: 10.2pt; line-height: 1.45; }
+body { margin: 0; }
+h1, h2, h3 { color: #101828; line-height: 1.18; margin: 0; }
+h2 { border-bottom: 1px solid #d0d5dd; font-size: 15pt; margin: 9mm 0 4mm; padding-bottom: 2mm; page-break-after: avoid; }
+h3 { font-size: 12.5pt; margin: 0 0 3mm; page-break-after: avoid; }
+p { margin: 0 0 3mm; }
+ul { margin: 2mm 0 4mm 5mm; padding: 0; }
+li { margin: 0 0 1.5mm; }
+table { border-collapse: collapse; margin: 3mm 0 7mm; page-break-inside: auto; width: 100%; }
+thead { display: table-header-group; }
+tr { page-break-inside: avoid; }
+th, td { border: 1px solid #d0d5dd; padding: 6px 7px; text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #344054; font-size: 8.5pt; letter-spacing: .03em; text-transform: uppercase; }
+td { font-size: 9.2pt; }
+tbody tr:nth-child(even) { background: #f8fafc; }
+code, pre { font-family: Consolas, "Courier New", monospace; font-size: 8.4pt; }
+pre { background: #f8fafc; border: 1px solid #d0d5dd; border-radius: 6px; padding: 8px; white-space: pre-wrap; }
+.cover { background: #0b1f33; color: #f8fafc; min-height: 297mm; padding: 21mm; page: cover; page-break-after: always; position: relative; }
+.cover-kicker { color: #93c5fd; font-size: 9pt; font-weight: 700; letter-spacing: .11em; margin-bottom: 7mm; text-transform: uppercase; }
+.cover h1 { color: #fff; font-size: 30pt; max-width: 160mm; }
+.cover-subtitle { color: #dbeafe; font-size: 12.5pt; margin-top: 6mm; max-width: 150mm; }
+.cover-grid { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; margin-top: 12mm; }
+.cover-panel { border: 1px solid rgba(255,255,255,.22); border-radius: 8px; padding: 5mm; }
+.cover-label { color: #bfdbfe; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.cover-value { color: #fff; font-size: 12pt; font-weight: 700; margin-top: 2mm; }
+.cover-image { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; margin-top: 10mm; padding: 4mm; }
+.cover-image img { border-radius: 5px; display: block; width: 100%; }
+.cover-footer { bottom: 17mm; color: #cbd5e1; font-size: 8.8pt; left: 21mm; position: absolute; right: 21mm; }
+.report-header { border-bottom: 3px solid #1d4ed8; margin-bottom: 6mm; padding-bottom: 4mm; }
+.report-header h1 { font-size: 21pt; margin-bottom: 2mm; }
+.meta-line { color: #667085; font-size: 9pt; }
+.badge { border-radius: 999px; display: inline-block; font-size: 8.5pt; font-weight: 700; letter-spacing: .02em; padding: 4px 9px; text-transform: uppercase; }
+.status-urgent { background: #991b1b; color: #fff; }
+.status-attention { background: #92400e; color: #fff; }
+.status-insufficient { background: #475467; color: #fff; }
+.status-minor { background: #1d4ed8; color: #fff; }
+.status-acceptable { background: #027a48; color: #fff; }
+.status-neutral { background: #667085; color: #fff; }
+.priority-urgent, .priority-high { background: #fef2f2; color: #991b1b; }
+.priority-medium { background: #fffbeb; color: #92400e; }
+.priority-low { background: #eff6ff; color: #1d4ed8; }
+.status-strip { align-items: stretch; display: grid; gap: 4mm; grid-template-columns: repeat(4, 1fr); margin: 5mm 0 6mm; }
+.metric-card { background: #f8fafc; border: 1px solid #d0d5dd; border-radius: 8px; padding: 4mm; }
+.metric-label { color: #667085; font-size: 8pt; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.metric-value { color: #101828; font-size: 16pt; font-weight: 700; margin-top: 2mm; }
+.metric-note { color: #667085; font-size: 8.5pt; margin-top: 1.5mm; }
+.notice { border-left: 5px solid #92400e; background: #fffbeb; border-radius: 7px; margin: 5mm 0 7mm; padding: 4mm 5mm; }
+.notice strong { color: #7c2d12; }
+.coverage-grid { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; }
+.coverage-box, .section-card, .appendix-card { border: 1px solid #d0d5dd; border-radius: 8px; padding: 4mm; }
+.section-card { margin: 0 0 5mm; page-break-inside: avoid; }
+.section-header { align-items: center; border-bottom: 1px solid #e4e7ec; display: flex; justify-content: space-between; margin-bottom: 3mm; padding-bottom: 2mm; }
+.section-meta { color: #667085; font-size: 8.8pt; margin-top: 1mm; }
+.issue-pills { display: flex; gap: 2mm; margin: 3mm 0; }
+.pill { border: 1px solid #d0d5dd; border-radius: 999px; color: #344054; font-size: 8.3pt; padding: 2px 7px; }
+.two-column { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; }
+.finding-list { margin-top: 2mm; }
+.finding-item { border-left: 3px solid #d0d5dd; margin: 0 0 3mm; padding-left: 3mm; }
+.muted { color: #667085; }
+.disclaimer { background: #fff7ed; border: 1px solid #fed7aa; border-left: 5px solid #f97316; border-radius: 8px; font-weight: 700; margin-top: 4mm; padding: 4mm; }
+.page-break { page-break-before: always; }
 </style>
 </head>
 <body>
 <section class="cover">
   <div class="cover-kicker">AI-assisted school condition validator</div>
-  <h1>{{ content.title }}</h1>
-  <p class="cover-subtitle">A cautious visual inspection summary generated from category-level evidence packets and deterministic validation checks.</p>
-  <div class="cover-meta">
-    <p>Overall status: <strong>{{ content.overall_status }}</strong></p>
-    <p>Provisional: <strong>{{ "Yes" if content.provisional else "No" }}</strong></p>
-    <p>Generated at: {{ metadata.generated_at_utc }}</p>
+  <h1>{{ view.title }}</h1>
+  <p class="cover-subtitle">Enterprise inspection report generated from validated category evidence packets and deterministic rendering checks.</p>
+  <div class="cover-grid">
+    <div class="cover-panel"><div class="cover-label">Overall status</div><div class="cover-value">{{ view.overall_status_label }}</div></div>
+    <div class="cover-panel"><div class="cover-label">Report status</div><div class="cover-value">{{ view.report_status_label }}</div></div>
+    <div class="cover-panel"><div class="cover-label">Categories processed</div><div class="cover-value">{{ view.processed_category_count }} / {{ view.total_category_count }}</div></div>
+    <div class="cover-panel"><div class="cover-label">Generated at</div><div class="cover-value">{{ view.generated_at_utc }}</div></div>
   </div>
   {% if cover_image_url %}<div class="cover-image"><img src="{{ cover_image_url }}" alt="School inspection report visual"></div>{% endif %}
-  <div class="cover-footer">{{ content.disclaimer }}</div>
+  <div class="cover-footer">{{ view.disclaimer }}</div>
 </section>
 <main>
-<h1>{{ content.title }}</h1>
-<p class="meta">Generated at: {{ metadata.generated_at_utc }}</p>
-<h2>Overall Verdict</h2>
-<div class="summary-card">
-  <p><span class="badge {{ status_class }}">{{ content.overall_status }}</span></p>
-  <ul><li>Provisional: {{ "Yes" if content.provisional else "No" }}</li><li>Deterministic status floor: {{ metadata.deterministic_status_floor }}</li></ul>
+<div class="report-header">
+  <h1>{{ view.title }}</h1>
+  <p class="meta-line">Generated at {{ view.generated_at_utc }} | Deterministic status floor: {{ view.deterministic_status_floor }}</p>
 </div>
+<div class="status-strip">
+  <div class="metric-card"><div class="metric-label">Overall status</div><div class="metric-value"><span class="badge {{ view.overall_status_class }}">{{ view.overall_status }}</span></div><div class="metric-note">{{ view.overall_status_label }}</div></div>
+  <div class="metric-card"><div class="metric-label">Report status</div><div class="metric-value">{{ view.report_status_label }}</div><div class="metric-note">Human review before decisions</div></div>
+  <div class="metric-card"><div class="metric-label">Coverage</div><div class="metric-value">{{ view.processed_category_count }} / {{ view.total_category_count }}</div><div class="metric-note">Configured categories processed</div></div>
+  <div class="metric-card"><div class="metric-label">Evidence</div><div class="metric-value">{{ view.total_images }}</div><div class="metric-note">Images represented in category packets</div></div>
+</div>
+{% if view.provisional or view.human_review_items %}
+<div class="notice"><strong>Human review required.</strong> This report is provisional and requires human review before decisions are made. Review-required category count: {{ view.human_review_items }}.</div>
+{% endif %}
 <h2>Executive Summary</h2>
-<ul>{% for item in content.executive_summary %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<h2>Scope and Inspected Categories</h2>
-<ul>{% for item in content.scope_and_inputs %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<ul>{% for item in view.executive_summary %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<h2>Category Coverage</h2>
+<div class="coverage-grid">
+  <div class="coverage-box"><h3>Processed categories</h3><ul>{% for item in view.processed_categories %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
+  <div class="coverage-box"><h3>Not inspected categories</h3><ul>{% for item in view.not_inspected_categories %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
+</div>
+<h2>Scope and Inputs</h2>
+<ul>{% for item in view.scope_and_inputs %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
 <h2>Input Provenance</h2>
-<ul>{% for item in metadata.category_output_sources %}<li><code>{{ item.category }}</code>: <code>{{ item.path }}</code> ({{ item.last_modified_utc }})</li>{% endfor %}</ul>
+<ul>{% for item in view.source_files %}<li><code>{{ item.category }}</code>: <code>{{ item.path }}</code> ({{ item.last_modified_utc }})</li>{% endfor %}</ul>
 <h2>Category Summary Table</h2>
 <table><thead><tr><th>Category</th><th>Status</th><th>Images</th><th>High</th><th>Medium</th><th>Low</th><th>Human Review</th></tr></thead><tbody>
-{% for row in category_table %}<tr><td><code>{{ row.category }}</code></td><td>{{ row.status }}</td><td>{{ row.image_count }}</td><td>{{ row.high }}</td><td>{{ row.medium }}</td><td>{{ row.low }}</td><td>{{ row.human_review }}</td></tr>{% endfor %}
+{% for row in view.category_table %}<tr><td><code>{{ row.category }}</code></td><td>{{ row.status }}</td><td>{{ row.image_count }}</td><td>{{ row.high }}</td><td>{{ row.medium }}</td><td>{{ row.low }}</td><td>{{ row.human_review }}</td></tr>{% endfor %}
 </tbody></table>
-<h2>Immediate Actions</h2><ul>{% for item in content.immediate_actions %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<h2>Maintenance Actions</h2><ul>{% for item in content.maintenance_actions %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<h2>Documentation Follow-ups</h2><ul>{% for item in content.documentation_followups %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<h2>Human Review Notes</h2><ul>{% for item in content.human_review_notes %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<h2>Category-by-Category Findings</h2>
-{% for section in content.category_sections %}
-<section class="category-block">
-<h3>{{ section.category }}</h3>
-<ul><li>Status: {{ section.status }}</li><li>Priority: {{ section.priority }}</li></ul>
-<p>{{ section.summary }}</p>
-<p><strong>Evidence references</strong></p><ul>{% for item in section.evidence_refs %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<p><strong>Recommended actions</strong></p><ul>{% for item in section.recommended_actions %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<h2>Priority Actions</h2>
+{% if view.priority_action_rows %}
+<table><thead><tr><th>Priority</th><th>Category</th><th>Recommended action</th><th>Evidence / basis</th><th>Review required</th></tr></thead><tbody>
+{% for row in view.priority_action_rows %}<tr><td><span class="badge {{ row.priority_class }}">{{ row.priority }}</span></td><td>{{ row.category }}</td><td>{{ row.action }}</td><td>{{ row.evidence }}</td><td>{{ row.review_required }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No priority action rows were recorded in the validated report content.</p>{% endif %}
+<div class="two-column">
+{% for group in view.global_action_groups %}
+<div class="coverage-box"><h3>{{ group.label }}</h3><ul>{% for item in group.action_items %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
+{% endfor %}
+</div>
+<h2>Human Review Notes</h2><ul>{% for item in view.human_review_notes %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<h2 class="page-break">Section-wise Findings</h2>
+{% for section in view.category_sections %}
+<section class="section-card">
+  <div class="section-header">
+    <div><h3>{{ section.category }}</h3><div class="section-meta">Images reviewed: {{ section.image_count }} | Human review required: {{ "Yes" if section.human_review_required else "No" }}</div></div>
+    <div><span class="badge {{ section.status_class }}">{{ section.status_label }}</span> <span class="badge {{ section.priority_class }}">{{ section.priority_label }}</span></div>
+  </div>
+  <p>{{ section.summary }}</p>
+  <div class="issue-pills"><span class="pill">High: {{ section.issue_counts.high }}</span><span class="pill">Medium: {{ section.issue_counts.medium }}</span><span class="pill">Low: {{ section.issue_counts.low }}</span></div>
+  <div class="two-column">
+    <div><strong>Key findings</strong><div class="finding-list">{% for finding in section.key_findings %}<div class="finding-item"><strong>{{ finding.severity }}</strong> - {{ finding.issue_type }}<br><span class="muted">{{ finding.evidence }}</span></div>{% else %}<p class="muted">None recorded.</p>{% endfor %}</div></div>
+    <div><strong>Recommended actions</strong><ul>{% for item in section.recommended_actions %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul><strong>Evidence references</strong><ul>{% for item in section.evidence_refs %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
+  </div>
+  <strong>Documentation gaps</strong><ul>{% for gap in section.documentation_gaps %}<li>{{ gap.image_id }}: {{ gap.gap }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
 </section>
 {% endfor %}
 <h2>Limitations and Disclaimer</h2>
-<ul>{% for item in content.limitations %}<li>{{ item }}</li>{% endfor %}</ul>
-<p class="disclaimer">{{ content.disclaimer }}</p>
+<ul>{% for item in view.limitations %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<p class="disclaimer">{{ view.disclaimer }}</p>
 <h2>Machine-Readable Appendix</h2>
 <pre>{{ appendix_json }}</pre>
 </main>
@@ -257,40 +558,15 @@ pre { background: #f7fafc; border: 1px solid #d7e3ef; border-radius: 6px; paddin
 def render_report_html(content: FinalReportContent, metadata: dict, category_packets: list[dict]) -> str:
     """Render the final report as deterministic HTML for PDF conversion."""
 
-    packet_by_category = {packet["category"]: packet for packet in category_packets}
-    category_table = []
-    for section in content.category_sections:
-        packet = packet_by_category[section.category]
-        counts = packet["issue_counts"]
-        category_table.append(
-            {
-                "category": section.category,
-                "status": status_label(section.status),
-                "image_count": packet["image_count"],
-                "high": counts.get("high", 0),
-                "medium": counts.get("medium", 0),
-                "low": counts.get("low", 0),
-                "human_review": "Yes" if packet["human_review_required"] else "No",
-            }
-        )
-
-    status_class = {
-        "urgent_review_required": "urgent",
-        "maintenance_attention_required": "medium",
-        "insufficient_evidence": "status-insufficient",
-        "acceptable_with_minor_issues": "status-ok",
-    }[content.overall_status]
+    view = build_report_view_model(content, metadata, category_packets)
     cover_image_path = Path(metadata["cover_image_path"]) if metadata.get("cover_image_path") else None
 
     environment = Environment(loader=BaseLoader(), autoescape=select_autoescape(default=True))
     template = environment.from_string(REPORT_HTML_TEMPLATE)
     return template.render(
-        content=content.model_dump(mode="json"),
-        metadata=metadata,
-        category_table=category_table,
-        status_class=status_class,
+        view=view,
         cover_image_url=image_path_to_data_url(cover_image_path),
-        appendix_json=json.dumps(build_report_appendix(metadata), indent=2, ensure_ascii=False),
+        appendix_json=json.dumps(view["appendix"], indent=2, ensure_ascii=False),
     )
 
 
@@ -305,7 +581,7 @@ def reportlab_bullet_list(items: list[str], styles: dict) -> list:
 
     from reportlab.platypus import Paragraph
 
-    cleaned_items = [item.strip() for item in items if item and item.strip()]
+    cleaned_items = clean_text_items(items)
     if not cleaned_items:
         cleaned_items = ["None recorded."]
     return [Paragraph("- " + reportlab_text(item), styles["BodyText"]) for item in cleaned_items]
@@ -339,6 +615,7 @@ def render_report_pdf_with_reportlab(
     )
     styles["Heading2"].textColor = colors.HexColor("#12385b")
     styles["Heading3"].textColor = colors.HexColor("#23435f")
+    view = build_report_view_model(content, metadata, category_packets)
 
     story = [
         Table(
@@ -376,6 +653,10 @@ def render_report_pdf_with_reportlab(
             Paragraph(f"Generated at: {reportlab_text(metadata['generated_at_utc'])}", styles["BodyText"]),
             Paragraph(f"Overall status: {reportlab_text(content.overall_status)}", styles["BodyText"]),
             Paragraph(f"Provisional: {'Yes' if content.provisional else 'No'}", styles["BodyText"]),
+            Paragraph(
+                f"Categories processed: {view['processed_category_count']} / {view['total_category_count']}",
+                styles["BodyText"],
+            ),
             Paragraph(reportlab_text(content.disclaimer), styles["BodyText"]),
             PageBreak(),
             Paragraph(f"Generated at: {reportlab_text(metadata['generated_at_utc'])}", styles["Normal"]),
@@ -386,9 +667,32 @@ def render_report_pdf_with_reportlab(
                 f"Deterministic status floor: {reportlab_text(metadata['deterministic_status_floor'])}",
                 styles["BodyText"],
             ),
+            Paragraph(
+                f"Categories processed: {view['processed_category_count']} / {view['total_category_count']}",
+                styles["BodyText"],
+            ),
+            Paragraph(f"Human review items: {view['human_review_items']}", styles["BodyText"]),
+        ]
+    )
+
+    if content.provisional or view["human_review_items"]:
+        story.append(
+            Paragraph(
+                "Human review required. This report is provisional and requires human review before decisions are made.",
+                styles["BodyText"],
+            )
+        )
+
+    story.extend(
+        [
             Paragraph("Executive Summary", styles["Heading2"]),
             *reportlab_bullet_list(content.executive_summary, styles),
-            Paragraph("Scope and Inspected Categories", styles["Heading2"]),
+            Paragraph("Category Coverage", styles["Heading2"]),
+            Paragraph("Processed categories", styles["Heading3"]),
+            *reportlab_bullet_list(view["processed_categories"], styles),
+            Paragraph("Not inspected categories", styles["Heading3"]),
+            *reportlab_bullet_list(view["not_inspected_categories"], styles),
+            Paragraph("Scope and Inputs", styles["Heading2"]),
             *reportlab_bullet_list(content.scope_and_inputs, styles),
             Paragraph("Input Provenance", styles["Heading2"]),
             *reportlab_bullet_list(
@@ -401,20 +705,17 @@ def render_report_pdf_with_reportlab(
         ]
     )
 
-    packet_by_category = {packet["category"]: packet for packet in category_packets}
     table_rows = [["Category", "Status", "Images", "High", "Medium", "Low", "Human Review"]]
-    for section in content.category_sections:
-        packet = packet_by_category[section.category]
-        counts = packet["issue_counts"]
+    for row in build_category_table_rows(content, category_packets):
         table_rows.append(
             [
-                section.category,
-                status_label(section.status),
-                str(packet["image_count"]),
-                str(counts.get("high", 0)),
-                str(counts.get("medium", 0)),
-                str(counts.get("low", 0)),
-                "Yes" if packet["human_review_required"] else "No",
+                row["category"],
+                row["status"],
+                str(row["image_count"]),
+                str(row["high"]),
+                str(row["medium"]),
+                str(row["low"]),
+                row["human_review"],
             ]
         )
 
@@ -431,6 +732,32 @@ def render_report_pdf_with_reportlab(
         )
     )
     story.extend([table, Spacer(1, 4 * mm)])
+
+    if view["priority_action_rows"]:
+        priority_rows = [["Priority", "Category", "Recommended Action", "Evidence", "Review Required"]]
+        for row in view["priority_action_rows"]:
+            priority_rows.append(
+                [
+                    row["priority"],
+                    row["category"],
+                    reportlab_text(row["action"]),
+                    reportlab_text(row["evidence"]),
+                    row["review_required"],
+                ]
+            )
+        story.append(Paragraph("Priority Actions", styles["Heading2"]))
+        priority_table = Table(priority_rows, repeatRows=1)
+        priority_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f4f7")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d0d5dd")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.extend([priority_table, Spacer(1, 4 * mm)])
 
     for heading, items in [
         ("Immediate Actions", content.immediate_actions),

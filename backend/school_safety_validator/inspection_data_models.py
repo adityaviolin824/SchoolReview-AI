@@ -235,3 +235,66 @@ class FullInspectionRunState(TypedDict, total=False):
     category_states: dict[str, CategoryRunState]
     all_human_review_queue: list[HumanReviewItem]
     saved_category_output_files: dict[str, Path]
+
+
+PipelineStatus = Literal["completed", "completed_with_human_review_required", "failed"]
+
+
+class SchoolMetadata(BaseModel):
+    """School-level metadata supplied by the future website or local executor."""
+
+    name: str = Field(min_length=1, max_length=180)
+    inspection_date: str = Field(min_length=1, max_length=60)
+    location: str = Field(min_length=1, max_length=240)
+
+
+class InspectionImageInput(BaseModel):
+    """One uploaded or registered inspection image plus its optional comment."""
+
+    image_path: Path
+    comment: str = Field(default="", max_length=1000)
+
+
+class InspectionSectionInput(BaseModel):
+    """One inspection section/category from the request payload."""
+
+    section_name: str = Field(min_length=1, max_length=80)
+    section_comment: str = Field(default="", max_length=2000)
+    images: list[InspectionImageInput] = Field(default_factory=list)
+
+
+class SchoolInspectionRequest(BaseModel):
+    """Structured end-to-end pipeline input."""
+
+    school: SchoolMetadata
+    sections: list[InspectionSectionInput] = Field(min_length=1)
+
+
+class PipelineExecutionOptions(BaseModel):
+    """Runtime paths and toggles kept separate from website-shaped input data."""
+
+    output_root: Path
+    materialized_input_root: Path | None = None
+    run_id: str | None = Field(default=None, max_length=80)
+    tracing_enabled: bool = True
+    generate_report: bool = True
+
+
+class SchoolInspectionResult(BaseModel):
+    """Structured end-to-end pipeline output."""
+
+    school: SchoolMetadata
+    pipeline_status: PipelineStatus
+    overall_status: OverallInspectionStatus | None = None
+    provisional: bool | None = None
+    processed_sections: list[str] = Field(default_factory=list)
+    failed_sections: list[str] = Field(default_factory=list)
+    not_inspected_sections: list[str] = Field(default_factory=list)
+    total_images: int = 0
+    human_review_required: bool = False
+    human_review_items: list[dict] = Field(default_factory=list)
+    category_summaries: dict[str, dict] = Field(default_factory=dict)
+    run_summary: dict = Field(default_factory=dict)
+    artifact_paths: dict[str, str] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

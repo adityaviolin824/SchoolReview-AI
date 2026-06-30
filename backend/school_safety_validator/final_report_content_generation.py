@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .final_report_artifact_rendering import find_report_cover_image, save_final_report_outputs
-from .final_verdict_aggregation import final_report_output_root, run_final_aggregation
+from .final_verdict_aggregation import final_report_output_root, run_final_aggregation, validate_exact_category_set
 from .inspection_data_models import FinalInspectionLLMReport, FinalReportContent
 from .inspection_runtime_settings import ValidatorSettings, get_settings
 from .structured_model_response_parsing import parse_openai_structured_response
@@ -71,17 +71,13 @@ def validate_final_report_content(
 
     expected_categories = {packet["category"] for packet in category_packets}
     reported_categories = [section.category for section in content.category_sections]
-    reported_category_set = set(reported_categories)
-    duplicate_categories = sorted({value for value in reported_categories if reported_categories.count(value) > 1})
-    unknown_categories = sorted(reported_category_set - expected_categories)
-    missing_categories = sorted(expected_categories - reported_category_set)
-
-    if duplicate_categories:
-        raise ValueError(f"Report content has duplicate category sections: {duplicate_categories}")
-    if unknown_categories:
-        raise ValueError(f"Report content invented category sections: {unknown_categories}")
-    if missing_categories:
-        raise ValueError(f"Report content omitted category sections: {missing_categories}")
+    validate_exact_category_set(
+        reported_categories,
+        expected_categories,
+        "Report content has duplicate category sections",
+        "Report content invented category sections",
+        "Report content omitted category sections",
+    )
 
     limitation_text = "\n".join(content.limitations).lower()
     missing_not_inspected = [

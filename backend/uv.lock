@@ -1493,6 +1493,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pypdf" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "reportlab" },
     { name = "weasyprint" },
 ]
@@ -1518,6 +1519,7 @@ requires-dist = [
     { name = "pydantic" },
     { name = "pypdf", specifier = ">=6.14.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "reportlab", specifier = ">=5.0.0" },
     { name = "weasyprint", specifier = ">=69.0" },
 ]

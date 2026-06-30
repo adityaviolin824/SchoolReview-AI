@@ -178,6 +178,28 @@ def duplicate_values(values: list[str]) -> list[str]:
     return sorted({value for value in values if values.count(value) > 1})
 
 
+def validate_exact_category_set(
+    reported_categories: list[str],
+    expected_categories: set[str],
+    duplicate_message: str,
+    unknown_message: str,
+    missing_message: str,
+) -> None:
+    """Ensure a model returned exactly the expected categories."""
+
+    reported_category_set = set(reported_categories)
+    duplicate_categories = duplicate_values(reported_categories)
+    unknown_categories = sorted(reported_category_set - expected_categories)
+    missing_categories = sorted(expected_categories - reported_category_set)
+
+    if duplicate_categories:
+        raise ValueError(f"{duplicate_message}: {duplicate_categories}")
+    if unknown_categories:
+        raise ValueError(f"{unknown_message}: {unknown_categories}")
+    if missing_categories:
+        raise ValueError(f"{missing_message}: {missing_categories}")
+
+
 def validate_final_report(
     report: FinalInspectionLLMReport,
     global_rollup: dict,
@@ -200,18 +222,13 @@ def validate_final_report(
 
     expected_categories = {packet["category"] for packet in category_packets}
     reported_categories = [feedback.category for feedback in report.category_feedback]
-    reported_category_set = set(reported_categories)
-
-    duplicate_categories = duplicate_values(reported_categories)
-    unknown_categories = sorted(reported_category_set - expected_categories)
-    missing_categories = sorted(expected_categories - reported_category_set)
-
-    if duplicate_categories:
-        raise ValueError(f"Final report category_feedback has duplicate categories: {duplicate_categories}")
-    if unknown_categories:
-        raise ValueError(f"Final report category_feedback invented categories: {unknown_categories}")
-    if missing_categories:
-        raise ValueError(f"Final report category_feedback omitted categories: {missing_categories}")
+    validate_exact_category_set(
+        reported_categories,
+        expected_categories,
+        "Final report category_feedback has duplicate categories",
+        "Final report category_feedback invented categories",
+        "Final report category_feedback omitted categories",
+    )
 
     not_inspected_categories = global_rollup.get("not_inspected_categories", [])
     if not_inspected_categories and not any("not inspected" in item.lower() for item in report.limitations):

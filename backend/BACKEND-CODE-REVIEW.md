@@ -19,7 +19,7 @@ Validation after fixes:
 
 ```text
 uv run pytest -q
-21 passed, 1 warning
+30 passed, 1 warning
 ```
 
 The warning is the existing LangSmith dependency deprecation warning from an installed package. It is not an application test failure.
@@ -132,23 +132,26 @@ These tests use fake clients, fake graphs, monkeypatching, and temporary files. 
 
 All important issues from the original backend review have been fixed and tested.
 
-Still intentionally not implemented:
+Now implemented after the original review:
 
 - final school-level aggregation,
 - final report-content LLM calls,
-- Markdown/HTML/PDF report rendering,
+- Markdown/HTML/PDF report rendering.
+
+Still intentionally not implemented:
+
 - FastAPI routes,
 - frontend integration.
 
-Those are planned future phases, not unresolved bugs in the current local category-runner boundary.
+FastAPI and frontend integration are planned future phases, not unresolved bugs in the current local-first backend boundary.
 
 Not worth fixing right now:
 
-- empty future modules for final aggregation/report/API,
+- empty future API modules,
 - empty future tests for those modules,
 - sequential all-category execution, which is useful while local behavior is being proven,
 - the LangSmith dependency deprecation warning, because it does not break tests or current backend behavior.
 
 ## Recommended Next Step
 
-Proceed to final aggregation modularization only after reviewing a fresh local all-category output. The backend now has better failure preservation and clearer run summaries, so it is in a safer state for that next phase.
+Review a fresh local all-category output and generated final report artifacts before adding FastAPI. The backend now has failure preservation, deterministic rollups, final aggregation, and report rendering in place.

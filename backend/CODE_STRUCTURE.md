@@ -8,7 +8,7 @@ The important design rule is:
 LLMs interpret and write. Deterministic code validates, counts, routes, and renders.
 ```
 
-The current backend is still local-first. The `api/` folder exists as a placeholder, but it is intentionally not wired yet. Right now we are proving that local category processing works before adding FastAPI.
+The current backend is still local-first. The `api/` folder exists as a placeholder, but it is intentionally not wired yet. Local category processing, final aggregation, and report artifact generation are implemented before adding FastAPI.
 
 ## Current Runnable Boundary
 
@@ -23,12 +23,15 @@ The backend currently supports:
 7. Saving full image audit JSON for every image.
 8. Saving compact category JSON for every category.
 9. Saving a local all-category run summary JSON.
+10. Loading compact category outputs for final aggregation.
+11. Computing deterministic school-level rollups and status floors.
+12. Calling the final aggregation LLM and validating its structured output.
+13. Calling the report-content LLM and validating its structured output.
+14. Rendering Markdown, HTML, JSON, and PDF report artifacts.
+15. Validating rendered report artifacts.
 
 The backend does **not** yet support:
 
-- final school-level aggregation,
-- final report-content LLM calls,
-- Markdown/HTML/PDF report rendering,
 - FastAPI routes,
 - frontend integration.
 
@@ -125,19 +128,19 @@ Converts final graph state into JSON-friendly image audit records. Saves per-ima
 
 `final_verdict_aggregation.py`
 
-Reserved for the next phase: compact category packets, deterministic global rollups, final aggregation payloads, and final verdict validation.
+Builds compact category packets, deterministic global rollups, final aggregation payloads, and validates final aggregation output against deterministic guardrails.
 
 `final_report_content_generation.py`
 
-Reserved for the later report-content LLM step.
+Builds report-content payloads, calls the report-content LLM, validates report content, and coordinates final artifact rendering.
 
 `final_report_artifact_rendering.py`
 
-Reserved for Markdown, HTML, JSON, and PDF rendering.
+Renders deterministic Markdown, HTML, JSON, and PDF report artifacts. It uses WeasyPrint when available and falls back to ReportLab.
 
 `final_report_artifact_validation.py`
 
-Reserved for validating rendered report artifacts.
+Validates saved report artifacts, including PDF page count and required report text.
 
 `api/`
 
@@ -159,6 +162,15 @@ backend/school_validation_outputs/
     category_name_image_assessments.json
   run_outputs/
     all_category_run_summary.json
+  final_reports/
+    final_aggregation_raw_output.json
+    final_aggregation_output.json
+    final_aggregation_payload.json
+    school_safety_final_report_content.json
+    report_generation_payload.json
+    school_safety_final_report.md
+    school_safety_final_report.html
+    school_safety_final_report.pdf
 ```
 
 This is intentionally separate from:
@@ -175,6 +187,10 @@ backend/tests/
   test_deterministic_assessment_rules.py
   test_single_category_summary.py
   test_all_categories_inspection_runner.py
+  test_final_verdict_aggregation.py
+  test_final_report_content_generation.py
+  test_final_report_artifact_rendering.py
+  test_final_report_artifact_validation.py
 ```
 
 Normal tests should not make live model calls. Tests should focus on deterministic logic and mock model/provider boundaries.
@@ -187,12 +203,12 @@ Completed:
 2. Deterministic assessment rules.
 3. Single-category local runner.
 4. All-category local runner.
+5. Final aggregation from compact category JSON.
+6. Final report content generation.
+7. Deterministic report rendering and validation.
 
 Next:
 
 1. Inspect real category outputs from a local all-category run.
 2. Fix provider/schema issues if any appear.
-3. Add final aggregation from compact category JSON.
-4. Add final report content generation.
-5. Add deterministic report rendering.
-6. Add FastAPI only after local behavior is stable.
+3. Add FastAPI only after local behavior is stable.

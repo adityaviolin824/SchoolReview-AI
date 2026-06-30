@@ -36,7 +36,7 @@ uv run python -m pytest
 Expected current result:
 
 ```text
-13 passed
+30 passed
 ```
 
 There may be a LangSmith deprecation warning from an installed dependency. That warning does not currently block local runs.
@@ -53,6 +53,18 @@ All categories:
 
 ```powershell
 uv run python -m school_safety_validator.all_categories_inspection_runner --help
+```
+
+Final aggregation:
+
+```powershell
+uv run python -m school_safety_validator.final_verdict_aggregation --help
+```
+
+Final report generation:
+
+```powershell
+uv run python -m school_safety_validator.final_report_content_generation --help
 ```
 
 These commands do not call Gemini or OpenAI.
@@ -180,7 +192,53 @@ Each image JSON includes:
 - human-review status,
 - errors if any.
 
-## 10. Common Failures
+## 10. Run Final Aggregation
+
+After category outputs exist, run final aggregation:
+
+```powershell
+uv run python -m school_safety_validator.final_verdict_aggregation --output-root school_validation_outputs
+```
+
+This reads compact category JSON from:
+
+```text
+school_validation_outputs/category_outputs/
+```
+
+and writes:
+
+```text
+school_validation_outputs/final_reports/final_aggregation_raw_output.json
+school_validation_outputs/final_reports/final_aggregation_output.json
+school_validation_outputs/final_reports/final_aggregation_payload.json
+```
+
+This step calls OpenAI for the final aggregation LLM and requires `OPENAI_API_KEY`.
+
+## 11. Generate Final Report Artifacts
+
+After category outputs exist, generate the final report artifacts:
+
+```powershell
+uv run python -m school_safety_validator.final_report_content_generation --output-root school_validation_outputs
+```
+
+This runs final aggregation, calls the report-content LLM, renders deterministic artifacts, and validates them.
+
+Expected report artifacts:
+
+```text
+school_validation_outputs/final_reports/school_safety_final_report_content.json
+school_validation_outputs/final_reports/report_generation_payload.json
+school_validation_outputs/final_reports/school_safety_final_report.md
+school_validation_outputs/final_reports/school_safety_final_report.html
+school_validation_outputs/final_reports/school_safety_final_report.pdf
+```
+
+This step calls OpenAI and requires `OPENAI_API_KEY`.
+
+## 12. Common Failures
 
 Missing API keys:
 
@@ -212,8 +270,6 @@ Then inspect:
 school_validation_outputs/model_outputs/fire_extinguisher/
 ```
 
-## 11. What Not To Run Yet
+## 13. What Not To Run Yet
 
 Do not use the `api/` package yet. It is intentionally not wired.
-
-Do not expect final school-level aggregation, final report prose, or PDF reports yet. The current local boundary stops after category outputs.

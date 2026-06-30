@@ -8,7 +8,7 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
-from utils.logger import logging
+from utils.logger import configure_logging, logging
 
 from .deterministic_assessment_rules import init_category_state, init_image_state, read_text_if_exists
 from .image_assessment_workflow_graph import build_image_assessment_graph
@@ -244,6 +244,7 @@ async def run_category_with_tracing(category_name: str, settings: ValidatorSetti
 def main() -> None:
     """CLI entrypoint for running a single category."""
 
+    configure_logging()
     parser = argparse.ArgumentParser(description="Run one school inspection category.")
     parser.add_argument("category", help="Category name, e.g. classroom or electrical.")
     parser.add_argument("--input-root", type=Path, default=None, help="Dataset root. Defaults to sample_data/school.")
