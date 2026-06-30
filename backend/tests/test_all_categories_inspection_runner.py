@@ -25,6 +25,30 @@ def fake_category_state(category_name: str, output_file: Path) -> dict:
     }
 
 
+def empty_category_state(category_name: str, output_file: Path) -> dict:
+    """Build the state shape produced when a category has no images."""
+
+    return {
+        "category_name": category_name,
+        "image_results": [],
+        "human_review_queue": [],
+        "human_review_required": False,
+        "category_status": "insufficient_evidence",
+        "saved_category_output_file": output_file,
+    }
+
+
+class FakeLogger:
+    def __init__(self):
+        self.warning_calls = []
+
+    def info(self, *args, **kwargs):
+        return None
+
+    def warning(self, *args, **kwargs):
+        self.warning_calls.append((args, kwargs))
+
+
 def test_parse_category_list_returns_clean_category_names() -> None:
     assert parse_category_list("classroom, electrical, washroom") == [
         "classroom",
@@ -76,3 +100,61 @@ def test_run_all_category_inspections_reuses_clients_and_saves_summary(monkeypat
     assert all(call[1] is sentinel_clients for call in calls)
     assert summary["processed_categories"] == ["classroom", "washroom"]
     assert (tmp_path / "run_outputs" / "all_category_run_summary.json").exists()
+
+
+def test_run_all_category_inspections_preserves_failed_category_and_continues(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    async def fake_run_category_inspection(category_name, settings, clients):
+        calls.append(category_name)
+        if category_name == "classroom":
+            raise RuntimeError("category runner failed")
+        return fake_category_state(
+            category_name,
+            settings.output_root / "category_outputs" / f"{category_name}_image_assessments.json",
+        )
+
+    monkeypatch.setattr(
+        all_categories_inspection_runner,
+        "run_category_inspection",
+        fake_run_category_inspection,
+    )
+
+    fake_logger = FakeLogger()
+    monkeypatch.setattr(all_categories_inspection_runner, "logger", fake_logger)
+
+    settings = ValidatorSettings(output_root=tmp_path)
+    summary = asyncio.run(run_all_category_inspections(["classroom", "washroom"], settings, clients=object()))
+
+    assert calls == ["classroom", "washroom"]
+    assert summary["processed_categories"] == ["washroom"]
+    assert summary["failed_categories"] == ["classroom"]
+    assert summary["category_summaries"]["classroom"]["category_status"] == "insufficient_evidence"
+    assert summary["category_summaries"]["classroom"]["human_review_required"] is True
+    assert summary["category_summaries"]["classroom"]["error"]["error_type"] == "RuntimeError"
+    assert summary["category_summaries"]["washroom"]["category_status"] == "minor_maintenance"
+    assert fake_logger.warning_calls
+    assert (tmp_path / "run_outputs" / "all_category_run_summary.json").exists()
+
+
+def test_build_all_category_run_summary_marks_empty_category_not_inspected(tmp_path: Path) -> None:
+    classroom_output = tmp_path / "classroom_image_assessments.json"
+    other_output = tmp_path / "other_image_assessments.json"
+    full_run_state = {
+        "run_category_names": ["classroom", "other"],
+        "category_states": {
+            "classroom": fake_category_state("classroom", classroom_output),
+            "other": empty_category_state("other", other_output),
+        },
+        "all_human_review_queue": [],
+        "saved_category_output_files": {
+            "classroom": classroom_output,
+            "other": other_output,
+        },
+    }
+
+    summary = build_all_category_run_summary(full_run_state)
+
+    assert summary["processed_categories"] == ["classroom"]
+    assert summary["not_inspected_categories"] == ["other"]
+    assert summary["failed_categories"] == []

@@ -14,6 +14,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ENV_FILE = BACKEND_ROOT / ".env"
+
 CATEGORY_NAMES = [
     "ceiling",
     "classroom",
@@ -51,7 +54,7 @@ def get_settings(
 ) -> ValidatorSettings:
     """Load environment defaults and return workflow settings."""
 
-    load_dotenv(dotenv_path=Path(".env"), override=True)
+    load_dotenv(dotenv_path=BACKEND_ENV_FILE, override=True)
 
     settings = ValidatorSettings(
         langsmith_project=os.getenv("LANGSMITH_PROJECT", "school-safety-validator"),

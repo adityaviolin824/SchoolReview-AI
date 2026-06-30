@@ -49,5 +49,7 @@ def blur_faces_in_image(input_path: Path, output_path: Path) -> Path:
         blur_region(image, expanded_x, expanded_y, expanded_width, expanded_height)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(output_path), image)
+    write_succeeded = cv2.imwrite(str(output_path), image)
+    if not write_succeeded:
+        raise ValueError(f"Unable to write privacy image: {output_path}")
     return output_path

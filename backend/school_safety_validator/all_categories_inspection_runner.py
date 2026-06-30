@@ -14,12 +14,44 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
+from utils.logger import logging
 
 from .deterministic_assessment_rules import init_full_run_state
 from .inspection_output_storage import save_all_category_run_summary
 from .inspection_runtime_settings import CATEGORY_NAMES, ValidatorSettings, get_settings
 from .single_category_inspection_runner import run_category_inspection
 from .vision_model_provider_clients import ModelClients
+
+
+logger = logging.getLogger(__name__)
+
+
+def build_failed_category_state(category_name: str, error: Exception) -> dict:
+    """Represent a category-level runner failure without stopping the full run."""
+
+    error_data = {"error_type": type(error).__name__, "error_message": str(error)[:1000]}
+    return {
+        "category_name": category_name,
+        "image_results": [],
+        "human_review_queue": [],
+        "human_review_required": True,
+        "category_status": "insufficient_evidence",
+        "saved_category_output_file": None,
+        "category_error": error_data,
+        "category_summary": {
+            "category": category_name,
+            "image_count": 0,
+            "category_status": "insufficient_evidence",
+            "human_review_required": True,
+            "documentation_gaps": [
+                {
+                    "image_id": None,
+                    "gap": f"Category runner failed before category output could be saved: {error_data['error_message']}",
+                }
+            ],
+            "recommended_actions": ["Review this category run failure before final aggregation."],
+        },
+    }
 
 
 def build_all_category_run_summary(full_run_state: dict, saved_run_summary_file: Path | None = None) -> dict:
@@ -31,7 +63,13 @@ def build_all_category_run_summary(full_run_state: dict, saved_run_summary_file:
     """
 
     category_summaries = {}
+    failed_categories = []
+    processed_categories = []
     for category_name, category_state in full_run_state["category_states"].items():
+        if category_state.get("category_error"):
+            failed_categories.append(category_name)
+        if category_state.get("image_results"):
+            processed_categories.append(category_name)
         category_summaries[category_name] = {
             "category_status": category_state.get("category_status"),
             "image_count": len(category_state.get("image_results", [])),
@@ -39,10 +77,20 @@ def build_all_category_run_summary(full_run_state: dict, saved_run_summary_file:
             "human_review_item_count": len(category_state.get("human_review_queue", [])),
             "saved_category_output_file": str(category_state.get("saved_category_output_file") or ""),
         }
+        if category_state.get("category_error"):
+            category_summaries[category_name]["error"] = category_state["category_error"]
+
+    not_inspected_categories = [
+        category_name
+        for category_name in full_run_state["run_category_names"]
+        if category_name not in processed_categories and category_name not in failed_categories
+    ]
 
     summary = {
         "run_category_names": full_run_state["run_category_names"],
-        "processed_categories": list(full_run_state["category_states"].keys()),
+        "processed_categories": processed_categories,
+        "failed_categories": failed_categories,
+        "not_inspected_categories": not_inspected_categories,
         "saved_category_output_files": {
             category_name: str(output_file)
             for category_name, output_file in full_run_state["saved_category_output_files"].items()
@@ -71,17 +119,25 @@ async def run_all_category_inspections(
     category_names = run_category_names or CATEGORY_NAMES
     clients = clients or ModelClients.from_env(settings)
     full_run_state = init_full_run_state(category_names)
+    logger.info("Starting all-category inspection run for %d categories.", len(category_names))
 
     # Run categories one at a time for now. This is slower, but easier to debug
     # while we are proving that prompts, image inputs, and JSON outputs are right.
     for category_name in category_names:
-        category_state = await run_category_inspection(category_name, settings, clients)
+        try:
+            logger.info("Starting category inside all-category run: %s", category_name)
+            category_state = await run_category_inspection(category_name, settings, clients)
+        except Exception as error:
+            logger.warning("Category inspection failed for %s: %s", category_name, str(error)[:1000])
+            category_state = build_failed_category_state(category_name, error)
         full_run_state["category_states"][category_name] = category_state
         full_run_state["all_human_review_queue"].extend(category_state["human_review_queue"])
-        full_run_state["saved_category_output_files"][category_name] = category_state["saved_category_output_file"]
+        if category_state.get("saved_category_output_file"):
+            full_run_state["saved_category_output_files"][category_name] = category_state["saved_category_output_file"]
 
     unsaved_summary = build_all_category_run_summary(full_run_state)
     saved_run_summary_file = save_all_category_run_summary(unsaved_summary, settings)
+    logger.info("Saved all-category run summary: %s", saved_run_summary_file)
     return build_all_category_run_summary(full_run_state, saved_run_summary_file)
 
 

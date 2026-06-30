@@ -65,3 +65,22 @@ def test_summarize_category_keeps_compact_findings_and_actions() -> None:
     assert summary["category_status"] == "attention_required"
     assert summary["key_findings"][0]["image_id"] == "classroom_001.jpg"
     assert summary["recommended_actions"] == ["Review the visible maintenance concern."]
+
+
+def test_summarize_category_handles_failed_result_with_missing_error_details() -> None:
+    summary = summarize_category(
+        "classroom",
+        [
+            {
+                "image_id": "classroom_002.jpg",
+                "status": "failed",
+                "error": None,
+            }
+        ],
+        "Overall classroom comment.",
+    )
+
+    assert summary["category_status"] == "insufficient_evidence"
+    assert summary["documentation_gaps"] == [
+        {"image_id": "classroom_002.jpg", "gap": "Image job failed."}
+    ]

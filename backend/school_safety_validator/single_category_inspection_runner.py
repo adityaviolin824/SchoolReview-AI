@@ -8,6 +8,7 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
+from utils.logger import logging
 
 from .deterministic_assessment_rules import init_category_state, init_image_state, read_text_if_exists
 from .image_assessment_workflow_graph import build_image_assessment_graph
@@ -17,6 +18,9 @@ from .inspection_output_storage import image_state_to_result, save_category_outp
 from .inspection_prompt_templates import build_category_system_prompt
 from .inspection_runtime_settings import ValidatorSettings, get_settings
 from .vision_model_provider_clients import ModelClients
+
+
+logger = logging.getLogger(__name__)
 
 
 def build_category_image_states(
@@ -85,7 +89,8 @@ def summarize_category(category_name: str, category_results: list[dict], overall
     for result in category_results:
         if result["status"] != "completed":
             human_review_required = True
-            error_message = result.get("error", {}).get("error_message", "Image job failed.")
+            error_data = result.get("error") or {}
+            error_message = error_data.get("error_message", "Image job failed.")
             documentation_gaps.append({"image_id": result["image_id"], "gap": error_message})
             continue
 
@@ -143,6 +148,7 @@ async def run_category_inspection(
     clients = clients or ModelClients.from_env(settings)
     category_paths = build_category_paths(category_name, settings)
     ensure_output_dirs(category_paths, settings.output_root)
+    logger.info("Starting category inspection: %s", category_name)
 
     category_state = init_category_state(
         category_name,
@@ -157,26 +163,42 @@ async def run_category_inspection(
     )
 
     if not category_state["image_jobs"]:
+        logger.info("No images found for category: %s", category_name)
         category_state["category_summary"] = summarize_category(category_name, [], category_state["overall_comment"])
         category_state["category_status"] = category_state["category_summary"]["category_status"]
-        return save_category_outputs(category_state, settings)
+        saved_state = save_category_outputs(category_state, settings)
+        logger.info("Saved empty category output for %s: %s", category_name, saved_state["saved_category_output_file"])
+        return saved_state
 
     image_assessment_graph = build_image_assessment_graph(clients, settings)
     semaphore = asyncio.Semaphore(settings.max_concurrent_requests)
 
     async def run_one(image_state: ImageAssessmentState) -> ImageAssessmentState:
         async with semaphore:
-            return await image_assessment_graph.ainvoke(
-                image_state,
-                config={
-                    "run_name": f"{category_name}:{image_state['raw_image_path'].name}",
-                    "tags": ["school-inspection", category_name],
-                    "metadata": {
-                        "category": category_name,
-                        "image_name": image_state["raw_image_path"].name,
+            try:
+                return await image_assessment_graph.ainvoke(
+                    image_state,
+                    config={
+                        "run_name": f"{category_name}:{image_state['raw_image_path'].name}",
+                        "tags": ["school-inspection", category_name],
+                        "metadata": {
+                            "category": category_name,
+                            "image_name": image_state["raw_image_path"].name,
+                        },
                     },
-                },
-            )
+                )
+            except Exception as error:
+                logger.warning(
+                    "Image assessment failed for %s/%s: %s",
+                    category_name,
+                    image_state["raw_image_path"].name,
+                    str(error)[:1000],
+                )
+                return {
+                    **image_state,
+                    "status": "failed",
+                    "error": {"error_type": type(error).__name__, "error_message": str(error)[:1000]},
+                }
 
     final_image_states = await asyncio.gather(*(run_one(image_state) for image_state in category_state["image_jobs"]))
     image_results = []
@@ -204,7 +226,9 @@ async def run_category_inspection(
         category_state["overall_comment"],
     )
     category_state["category_status"] = category_state["category_summary"]["category_status"]
-    return save_category_outputs(category_state, settings)
+    saved_state = save_category_outputs(category_state, settings)
+    logger.info("Saved category output for %s: %s", category_name, saved_state["saved_category_output_file"])
+    return saved_state
 
 
 async def run_category_with_tracing(category_name: str, settings: ValidatorSettings) -> CategoryRunState:

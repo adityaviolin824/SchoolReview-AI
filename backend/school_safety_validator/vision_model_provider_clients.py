@@ -100,7 +100,7 @@ async def call_gemini_with_retry(
                 ),
             )
             return response.parsed
-        except Exception:
+        except Exception as error:
             is_last_attempt = attempt == clients.settings.max_gemini_attempts - 1
             if not should_retry_gemini_error(error) or is_last_attempt:
                 raise
