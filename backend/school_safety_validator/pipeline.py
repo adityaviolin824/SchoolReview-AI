@@ -10,7 +10,6 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
-from utils.logger import logging
 
 from .all_categories_inspection_runner import run_all_category_inspections
 from .final_report_content_generation import run_final_report_generation
@@ -20,6 +19,7 @@ from .inspection_data_models import (
     SchoolInspectionResult,
 )
 from .inspection_file_paths import SUPPORTED_IMAGE_EXTENSIONS
+from .logging_config import logging
 from .inspection_runtime_settings import CATEGORY_NAMES, get_settings
 from .vision_model_provider_clients import ModelClients
 
@@ -66,12 +66,13 @@ def resolve_request_image_paths(
 def normalize_execution_options(options: PipelineExecutionOptions) -> PipelineExecutionOptions:
     """Resolve generated-output paths without relying on process cwd later."""
 
-    output_root = options.output_root.resolve()
+    base_output_root = options.output_root.resolve()
     run_id = options.run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    output_root = base_output_root / run_id
     materialized_input_root = (
         options.materialized_input_root.resolve()
         if options.materialized_input_root
-        else output_root / "pipeline_inputs" / run_id
+        else output_root / "pipeline_inputs"
     )
     return options.model_copy(
         update={

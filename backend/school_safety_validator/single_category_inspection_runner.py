@@ -8,12 +8,12 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
-from utils.logger import configure_logging, logging
 
 from .deterministic_assessment_rules import init_category_state, init_image_state, read_text_if_exists
 from .image_assessment_workflow_graph import build_image_assessment_graph
 from .inspection_data_models import CategoryRunState, CategoryStatus, ImageAssessmentState
 from .inspection_file_paths import build_category_paths, discover_image_paths, ensure_output_dirs
+from .logging_config import configure_logging, logging
 from .inspection_output_storage import image_state_to_result, save_category_outputs
 from .inspection_prompt_templates import build_category_system_prompt
 from .inspection_runtime_settings import ValidatorSettings, get_settings

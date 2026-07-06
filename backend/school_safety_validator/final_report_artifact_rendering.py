@@ -14,7 +14,11 @@ from jinja2 import BaseLoader, Environment, select_autoescape
 from .final_report_artifact_validation import validate_rendered_report
 from .final_verdict_aggregation import final_report_output_root
 from .inspection_data_models import FinalReportContent
+from .logging_config import logging
 from .inspection_runtime_settings import BACKEND_ROOT, ValidatorSettings
+
+
+logger = logging.getLogger(__name__)
 
 
 SUPPORTED_REPORT_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -822,7 +826,8 @@ def render_report_pdf(
 
         HTML(string=html_text, base_url=str(Path.cwd())).write_pdf(pdf_path)
         return "weasyprint"
-    except Exception:
+    except Exception as error:
+        logger.warning("WeasyPrint PDF rendering failed; using ReportLab fallback: %s", str(error)[:500])
         render_report_pdf_with_reportlab(content, metadata, category_packets, pdf_path)
         return "reportlab"
 

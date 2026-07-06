@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 
@@ -287,7 +288,7 @@ def run_final_aggregation(
         text_format=FinalInspectionLLMReport,
     )
     raw_report = response.output_parsed
-    validated_report = validate_final_report(raw_report, global_rollup, category_packets)
+    validated_report = validate_final_report(copy.deepcopy(raw_report), global_rollup, category_packets)
     paths = save_final_aggregation_outputs(raw_report, validated_report, payload, settings)
     return {
         "raw_final_report": raw_report,

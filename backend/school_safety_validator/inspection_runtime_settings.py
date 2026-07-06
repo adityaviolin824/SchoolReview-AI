@@ -53,10 +53,11 @@ def get_settings(
     input_root: Path | None = None,
     output_root: Path | None = None,
     tracing_enabled: bool | None = None,
+    dotenv_override: bool = False,
 ) -> ValidatorSettings:
     """Load environment defaults and return workflow settings."""
 
-    load_dotenv(dotenv_path=BACKEND_ENV_FILE, override=True)
+    load_dotenv(dotenv_path=BACKEND_ENV_FILE, override=dotenv_override)
 
     settings = ValidatorSettings(
         langsmith_project=os.getenv("LANGSMITH_PROJECT", "school-safety-validator"),

@@ -155,9 +155,13 @@ def test_run_school_safety_pipeline_orchestrates_existing_components(monkeypatch
             "processed_categories": ["classroom"],
             "failed_categories": [],
             "not_inspected_categories": [],
-            "saved_run_summary_file": str(output_root / "run_outputs" / "all_category_run_summary.json"),
+            "saved_run_summary_file": str(
+                output_root / "test-run" / "run_outputs" / "all_category_run_summary.json"
+            ),
             "saved_category_output_files": {
-                "classroom": str(output_root / "category_outputs" / "classroom_image_assessments.json")
+                "classroom": str(
+                    output_root / "test-run" / "category_outputs" / "classroom_image_assessments.json"
+                )
             },
             "all_human_review_queue": [],
             "category_summaries": {
@@ -182,12 +186,16 @@ def test_run_school_safety_pipeline_orchestrates_existing_components(monkeypatch
                     "human_review_required": False,
                 },
                 "paths": {
-                    "final_aggregation_output": output_root / "final_reports" / "final_aggregation_output.json"
+                    "final_aggregation_output": (
+                        output_root / "test-run" / "final_reports" / "final_aggregation_output.json"
+                    )
                 },
             },
             "report_paths": {
-                "markdown_report": output_root / "final_reports" / "school_safety_final_report.md",
-                "html_report": output_root / "final_reports" / "school_safety_final_report.html",
+                "markdown_report": (
+                    output_root / "test-run" / "final_reports" / "school_safety_final_report.md"
+                ),
+                "html_report": output_root / "test-run" / "final_reports" / "school_safety_final_report.html",
             },
         }
 
@@ -206,8 +214,8 @@ def test_run_school_safety_pipeline_orchestrates_existing_components(monkeypatch
     assert result.processed_sections == ["classroom"]
     assert result.not_inspected_sections == ["ceiling"]
     assert observed["section_names"] == ["classroom"]
-    assert observed["input_root"] == (output_root.resolve() / "pipeline_inputs" / "test-run")
-    assert observed["output_root"] == output_root.resolve()
+    assert observed["input_root"] == (output_root.resolve() / "test-run" / "pipeline_inputs")
+    assert observed["output_root"] == output_root.resolve() / "test-run"
     assert observed["clients"] is fake_clients
     assert observed["openai_client"] is fake_clients.openai_client
     assert result.artifact_paths["final_report:markdown_report"].endswith("school_safety_final_report.md")

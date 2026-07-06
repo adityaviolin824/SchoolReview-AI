@@ -14,10 +14,10 @@ from pathlib import Path
 
 from langchain_core.tracers.langchain import wait_for_all_tracers
 from langsmith import tracing_context
-from utils.logger import configure_logging, logging
 
 from .deterministic_assessment_rules import init_full_run_state
 from .inspection_output_storage import save_all_category_run_summary
+from .logging_config import configure_logging, logging
 from .inspection_runtime_settings import CATEGORY_NAMES, ValidatorSettings, get_settings
 from .single_category_inspection_runner import run_category_inspection
 from .vision_model_provider_clients import ModelClients
@@ -68,7 +68,7 @@ def build_all_category_run_summary(full_run_state: dict, saved_run_summary_file:
     for category_name, category_state in full_run_state["category_states"].items():
         if category_state.get("category_error"):
             failed_categories.append(category_name)
-        if category_state.get("image_results"):
+        elif category_state.get("saved_category_output_file") or category_state.get("category_summary"):
             processed_categories.append(category_name)
         category_summaries[category_name] = {
             "category_status": category_state.get("category_status"),

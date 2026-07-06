@@ -137,7 +137,9 @@ def test_run_all_category_inspections_preserves_failed_category_and_continues(mo
     assert (tmp_path / "run_outputs" / "all_category_run_summary.json").exists()
 
 
-def test_build_all_category_run_summary_marks_empty_category_not_inspected(tmp_path: Path) -> None:
+def test_build_all_category_run_summary_marks_empty_category_processed_with_insufficient_evidence(
+    tmp_path: Path,
+) -> None:
     classroom_output = tmp_path / "classroom_image_assessments.json"
     other_output = tmp_path / "other_image_assessments.json"
     full_run_state = {
@@ -155,6 +157,8 @@ def test_build_all_category_run_summary_marks_empty_category_not_inspected(tmp_p
 
     summary = build_all_category_run_summary(full_run_state)
 
-    assert summary["processed_categories"] == ["classroom"]
-    assert summary["not_inspected_categories"] == ["other"]
+    assert summary["processed_categories"] == ["classroom", "other"]
+    assert summary["not_inspected_categories"] == []
     assert summary["failed_categories"] == []
+    assert summary["category_summaries"]["other"]["image_count"] == 0
+    assert summary["category_summaries"]["other"]["category_status"] == "insufficient_evidence"

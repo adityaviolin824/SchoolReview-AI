@@ -1,5 +1,6 @@
 """Tests for final aggregation payloads, validation, and saved outputs."""
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -125,3 +126,11 @@ def test_run_final_aggregation_saves_raw_validated_and_payload_json(tmp_path: Pa
     assert result["paths"]["final_aggregation_raw_output"].exists()
     assert result["paths"]["final_aggregation_output"].exists()
     assert result["paths"]["final_aggregation_payload"].exists()
+
+    raw_output = json.loads(result["paths"]["final_aggregation_raw_output"].read_text(encoding="utf-8"))
+    validated_output = json.loads(result["paths"]["final_aggregation_output"].read_text(encoding="utf-8"))
+
+    assert raw_output["overall_status"] == "acceptable_with_minor_issues"
+    assert raw_output["provisional"] is False
+    assert validated_output["overall_status"] == "insufficient_evidence"
+    assert validated_output["provisional"] is True
