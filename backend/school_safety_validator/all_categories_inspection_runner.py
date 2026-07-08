@@ -145,10 +145,10 @@ async def run_all_categories_with_tracing(
     run_category_names: list[str] | None,
     settings: ValidatorSettings,
 ) -> dict:
-    """Run all requested categories with one optional LangSmith trace context."""
+    """Run all requested categories with one LangSmith trace context."""
 
     try:
-        with tracing_context(enabled=settings.tracing_enabled, project_name=settings.langsmith_project):
+        with tracing_context(enabled=True, project_name=settings.langsmith_project):
             return await run_all_category_inspections(run_category_names, settings)
     finally:
         wait_for_all_tracers()
@@ -179,13 +179,11 @@ def main() -> None:
         default=None,
         help="Generated output root. Defaults to school_validation_outputs.",
     )
-    parser.add_argument("--no-tracing", action="store_true", help="Disable LangSmith tracing for this run.")
     args = parser.parse_args()
 
     settings = get_settings(
         input_root=args.input_root,
         output_root=args.output_root,
-        tracing_enabled=not args.no_tracing,
     )
     run_summary = asyncio.run(
         run_all_categories_with_tracing(

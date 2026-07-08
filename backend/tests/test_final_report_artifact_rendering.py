@@ -1,9 +1,16 @@
 """Smoke tests for deterministic report artifact rendering."""
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from school_safety_validator import final_report_artifact_rendering
 from school_safety_validator.final_report_artifact_rendering import (
+    REPORTLAB_PRIORITY_TABLE_WIDTHS_MM,
+    REPORTLAB_USABLE_WIDTH_MM,
+    reportlab_col_widths,
+    reportlab_table_rows,
+    render_report_pdf,
     render_report_html,
     render_report_markdown,
     save_final_report_outputs,
@@ -127,3 +134,74 @@ def test_enterprise_report_renderers_include_status_coverage_and_actions(tmp_pat
     assert "Categories processed" in html_text
     assert "Priority Actions" in html_text
     assert "Section-wise Findings" in html_text
+
+
+def test_pdf_renderer_uses_reportlab_by_default(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("SCHOOL_VALIDATOR_PDF_RENDERER", raising=False)
+    pdf_path = tmp_path / "report.pdf"
+
+    renderer = render_report_pdf(
+        "<html><body>Report</body></html>",
+        pdf_path,
+        report_content(),
+        metadata(tmp_path),
+        category_packets(),
+    )
+
+    assert renderer == "reportlab"
+    assert pdf_path.exists()
+
+
+def test_pdf_renderer_can_opt_into_weasyprint(monkeypatch, tmp_path: Path) -> None:
+    class FakeHTML:
+        def __init__(self, string, base_url):
+            self.string = string
+            self.base_url = base_url
+
+        def write_pdf(self, pdf_path):
+            Path(pdf_path).write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setenv("SCHOOL_VALIDATOR_PDF_RENDERER", "weasyprint")
+    monkeypatch.setitem(sys.modules, "weasyprint", SimpleNamespace(HTML=FakeHTML))
+
+    pdf_path = tmp_path / "report.pdf"
+    renderer = render_report_pdf(
+        "<html><body>Report</body></html>",
+        pdf_path,
+        report_content(),
+        metadata(tmp_path),
+        category_packets(),
+    )
+
+    assert renderer == "weasyprint"
+    assert pdf_path.exists()
+
+
+def test_reportlab_priority_table_widths_stay_inside_a4_frame() -> None:
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Table
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="TableHeader", parent=styles["BodyText"], wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="TableCell", parent=styles["BodyText"], wordWrap="CJK"))
+    rows = [
+        ["Priority", "Category", "Recommended Action", "Evidence", "Review Required"],
+        [
+            "Medium",
+            "classroom",
+            "Repair holes and perform minor refurbishment of walls and floor tiles.",
+            "classroom_37e6ac9122e642c09b7182816555b133.jpg",
+            "No",
+        ],
+    ]
+
+    table = Table(
+        reportlab_table_rows(rows, styles),
+        colWidths=reportlab_col_widths(REPORTLAB_PRIORITY_TABLE_WIDTHS_MM),
+        repeatRows=1,
+    )
+    width, _height = table.wrap(REPORTLAB_USABLE_WIDTH_MM * mm, 200 * mm)
+
+    assert sum(REPORTLAB_PRIORITY_TABLE_WIDTHS_MM) == REPORTLAB_USABLE_WIDTH_MM
+    assert width <= REPORTLAB_USABLE_WIDTH_MM * mm

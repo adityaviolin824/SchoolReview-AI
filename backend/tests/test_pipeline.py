@@ -205,7 +205,7 @@ def test_run_school_safety_pipeline_orchestrates_existing_components(monkeypatch
     fake_clients = FakeClients()
     result = run_school_safety_pipeline(
         request,
-        PipelineExecutionOptions(output_root=output_root, run_id="test-run", tracing_enabled=False),
+        PipelineExecutionOptions(output_root=output_root, run_id="test-run"),
         clients=fake_clients,
     )
 

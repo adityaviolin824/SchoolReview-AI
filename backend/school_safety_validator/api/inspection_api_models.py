@@ -50,10 +50,9 @@ class UploadedImageResponse(BaseModel):
 
 
 class StartInspectionRunRequest(BaseModel):
-    """Runtime toggles for starting a staged inspection run."""
+    """Runtime option for starting a staged inspection run."""
 
     generate_report: bool = True
-    tracing_enabled: bool = False
 
 
 class StartInspectionRunResponse(BaseModel):

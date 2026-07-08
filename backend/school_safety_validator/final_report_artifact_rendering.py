@@ -7,6 +7,7 @@ import contextlib
 import html
 import io
 import json
+import os
 from pathlib import Path
 
 from jinja2 import BaseLoader, Environment, select_autoescape
@@ -28,6 +29,9 @@ REPORT_IMAGE_MIME_TYPES = {
     ".png": "image/png",
     ".webp": "image/webp",
 }
+REPORTLAB_USABLE_WIDTH_MM = 170
+REPORTLAB_CATEGORY_TABLE_WIDTHS_MM = [25, 42, 17, 14, 19, 14, 39]
+REPORTLAB_PRIORITY_TABLE_WIDTHS_MM = [20, 24, 66, 45, 15]
 
 
 def find_report_cover_image() -> Path | None:
@@ -591,6 +595,26 @@ def reportlab_bullet_list(items: list[str], styles: dict) -> list:
     return [Paragraph("- " + reportlab_text(item), styles["BodyText"]) for item in cleaned_items]
 
 
+def reportlab_col_widths(widths_mm: list[float]) -> list[float]:
+    """Convert millimeter column widths into ReportLab points."""
+
+    from reportlab.lib.units import mm
+
+    return [width * mm for width in widths_mm]
+
+
+def reportlab_table_rows(rows: list[list[object]], styles: dict) -> list[list[object]]:
+    """Wrap table values in Paragraphs so long text cannot force page overflow."""
+
+    from reportlab.platypus import Paragraph
+
+    table_rows = []
+    for row_index, row in enumerate(rows):
+        style = styles["TableHeader"] if row_index == 0 else styles["TableCell"]
+        table_rows.append([Paragraph(reportlab_text(str(value)), style) for value in row])
+    return table_rows
+
+
 def render_report_pdf_with_reportlab(
     content: FinalReportContent,
     metadata: dict,
@@ -619,6 +643,27 @@ def render_report_pdf_with_reportlab(
     )
     styles["Heading2"].textColor = colors.HexColor("#12385b")
     styles["Heading3"].textColor = colors.HexColor("#23435f")
+    styles["BodyText"].wordWrap = "CJK"
+    styles.add(
+        ParagraphStyle(
+            name="TableHeader",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            leading=9.5,
+            textColor=colors.HexColor("#182230"),
+            wordWrap="CJK",
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="TableCell",
+            parent=styles["BodyText"],
+            fontSize=8.2,
+            leading=10,
+            wordWrap="CJK",
+        )
+    )
     view = build_report_view_model(content, metadata, category_packets)
 
     story = [
@@ -724,7 +769,11 @@ def render_report_pdf_with_reportlab(
         )
 
     story.append(Paragraph("Category Summary Table", styles["Heading2"]))
-    table = Table(table_rows, repeatRows=1)
+    table = Table(
+        reportlab_table_rows(table_rows, styles),
+        colWidths=reportlab_col_widths(REPORTLAB_CATEGORY_TABLE_WIDTHS_MM),
+        repeatRows=1,
+    )
     table.setStyle(
         TableStyle(
             [
@@ -750,7 +799,11 @@ def render_report_pdf_with_reportlab(
                 ]
             )
         story.append(Paragraph("Priority Actions", styles["Heading2"]))
-        priority_table = Table(priority_rows, repeatRows=1)
+        priority_table = Table(
+            reportlab_table_rows(priority_rows, styles),
+            colWidths=reportlab_col_widths(REPORTLAB_PRIORITY_TABLE_WIDTHS_MM),
+            repeatRows=1,
+        )
         priority_table.setStyle(
             TableStyle(
                 [
@@ -818,7 +871,16 @@ def render_report_pdf(
     metadata: dict,
     category_packets: list[dict],
 ) -> str:
-    """Render HTML into PDF with WeasyPrint, falling back to ReportLab if needed."""
+    """Render the final PDF with ReportLab by default.
+
+    WeasyPrint needs native GTK/Pango/GObject libraries on macOS. Keeping
+    ReportLab as the default avoids local system installs while preserving PDF
+    output. Set SCHOOL_VALIDATOR_PDF_RENDERER=weasyprint to opt into WeasyPrint.
+    """
+
+    if os.getenv("SCHOOL_VALIDATOR_PDF_RENDERER", "reportlab").strip().lower() != "weasyprint":
+        render_report_pdf_with_reportlab(content, metadata, category_packets, pdf_path)
+        return "reportlab"
 
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):

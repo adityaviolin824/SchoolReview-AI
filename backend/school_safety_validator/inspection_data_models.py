@@ -271,12 +271,11 @@ class SchoolInspectionRequest(BaseModel):
 
 
 class PipelineExecutionOptions(BaseModel):
-    """Runtime paths and toggles kept separate from website-shaped input data."""
+    """Runtime paths and report toggle kept separate from website-shaped input data."""
 
     output_root: Path
     materialized_input_root: Path | None = None
     run_id: str | None = Field(default=None, max_length=80)
-    tracing_enabled: bool = True
     generate_report: bool = True
 
 

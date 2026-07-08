@@ -232,10 +232,10 @@ async def run_category_inspection(
 
 
 async def run_category_with_tracing(category_name: str, settings: ValidatorSettings) -> CategoryRunState:
-    """Run one category with LangSmith tracing enabled when configured."""
+    """Run one category with LangSmith tracing enabled."""
 
     try:
-        with tracing_context(enabled=settings.tracing_enabled, project_name=settings.langsmith_project):
+        with tracing_context(enabled=True, project_name=settings.langsmith_project):
             return await run_category_inspection(category_name, settings)
     finally:
         wait_for_all_tracers()
@@ -254,13 +254,11 @@ def main() -> None:
         default=None,
         help="Generated output root. Defaults to school_validation_outputs.",
     )
-    parser.add_argument("--no-tracing", action="store_true", help="Disable LangSmith tracing for this run.")
     args = parser.parse_args()
 
     settings = get_settings(
         input_root=args.input_root,
         output_root=args.output_root,
-        tracing_enabled=not args.no_tracing,
     )
     category_state = asyncio.run(run_category_with_tracing(args.category, settings))
     print("Saved category output:", category_state["saved_category_output_file"])

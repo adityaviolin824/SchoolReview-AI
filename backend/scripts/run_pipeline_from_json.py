@@ -37,7 +37,6 @@ def parse_args() -> argparse.Namespace:
         help="Optional base directory for relative image paths. Defaults to the request JSON folder.",
     )
     parser.add_argument("--run-id", default=None, help="Optional run id used for generated input subfolders.")
-    parser.add_argument("--no-tracing", action="store_true", help="Disable LangSmith tracing.")
     parser.add_argument("--skip-report", action="store_true", help="Run image/category stages without final report LLMs.")
     return parser.parse_args()
 
@@ -64,7 +63,6 @@ def main() -> int:
             output_root=args.output_root,
             materialized_input_root=args.materialized_input_root,
             run_id=args.run_id,
-            tracing_enabled=not args.no_tracing,
             generate_report=not args.skip_report,
         )
         result = run_school_safety_pipeline(request, options)

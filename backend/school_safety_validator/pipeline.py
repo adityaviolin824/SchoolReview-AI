@@ -265,12 +265,11 @@ async def run_school_safety_pipeline_async(
         settings = get_settings(
             input_root=options.materialized_input_root,
             output_root=options.output_root,
-            tracing_enabled=options.tracing_enabled,
         )
         section_names = validate_request_sections(request)
         model_clients = clients or ModelClients.from_env(settings)
 
-        with tracing_context(enabled=settings.tracing_enabled, project_name=settings.langsmith_project):
+        with tracing_context(enabled=True, project_name=settings.langsmith_project):
             run_summary = await run_all_category_inspections(section_names, settings, model_clients)
             report_result = None
             if options.generate_report:

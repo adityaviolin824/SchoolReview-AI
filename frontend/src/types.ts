@@ -1,0 +1,70 @@
+export type ApiRunStatus = "created" | "running" | "completed" | "completed_with_human_review_required" | "failed";
+
+export type PipelineStatus = "completed" | "completed_with_human_review_required" | "failed";
+
+export type OverallInspectionStatus =
+  | "acceptable_with_minor_issues"
+  | "maintenance_attention_required"
+  | "urgent_review_required"
+  | "insufficient_evidence";
+
+export type SectionName =
+  | "ceiling"
+  | "classroom"
+  | "corridor"
+  | "electrical"
+  | "exterior"
+  | "fire_extinguisher"
+  | "staircase"
+  | "washroom"
+  | "other";
+
+export type CreateRunResponse = {
+  run_id: string;
+  status: ApiRunStatus;
+  sections: string[];
+};
+
+export type UploadedImageResponse = {
+  run_id: string;
+  section_name: string;
+  image_id: string;
+  original_filename: string;
+};
+
+export type HumanReviewItem = {
+  review_id: string;
+  category_name: string;
+  image_id: string;
+  reason: string;
+  status: string;
+};
+
+export type CategorySummary = {
+  category_status: string | null;
+  image_count: number;
+  human_review_required: boolean;
+  human_review_item_count: number;
+};
+
+export type RunStatusResponse = {
+  run_id: string;
+  status: ApiRunStatus;
+  pipeline_status: PipelineStatus | null;
+  overall_status: OverallInspectionStatus | null;
+  provisional: boolean | null;
+  processed_sections: string[];
+  failed_sections: string[];
+  not_inspected_sections: string[];
+  total_images: number;
+  human_review_required: boolean;
+  human_review_items: HumanReviewItem[];
+  category_summaries: Record<string, CategorySummary>;
+  artifacts: string[];
+  warnings: string[];
+  errors: string[];
+};
+
+export type HealthResponse = {
+  status: "ok";
+};

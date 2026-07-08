@@ -93,10 +93,18 @@ def build_category_packets(category_outputs: dict[str, dict]) -> list[dict]:
     ]
 
 
-def build_global_rollup(category_packets: list[dict]) -> dict:
+def configured_category_order(category_names: list[str]) -> list[str]:
+    """Return known categories in configured order."""
+
+    category_set = set(category_names)
+    return [category_name for category_name in CATEGORY_NAMES if category_name in category_set]
+
+
+def build_global_rollup(category_packets: list[dict], failed_categories: list[str] | None = None) -> dict:
     """Compute deterministic all-category totals for the final LLM."""
 
     processed_categories = [packet["category"] for packet in category_packets]
+    failed_category_names = configured_category_order(failed_categories or [])
     not_inspected_categories = [
         category_name for category_name in CATEGORY_NAMES if category_name not in processed_categories
     ]
@@ -120,9 +128,11 @@ def build_global_rollup(category_packets: list[dict]) -> dict:
     attention_categories = [
         packet["category"] for packet in category_packets if packet["category_status"] == "attention_required"
     ]
-    human_review_categories = [
+    human_review_category_set = {
         packet["category"] for packet in category_packets if packet["human_review_required"]
-    ]
+    }
+    human_review_category_set.update(failed_category_names)
+    human_review_categories = configured_category_order(list(human_review_category_set))
     missing_required_categories = bool(
         REQUIRE_ALL_CONFIGURED_CATEGORIES_FOR_COMPLETE_VERDICT and not_inspected_categories
     )
@@ -140,6 +150,7 @@ def build_global_rollup(category_packets: list[dict]) -> dict:
         "total_categories_configured": len(CATEGORY_NAMES),
         "processed_categories": processed_categories,
         "not_inspected_categories": not_inspected_categories,
+        "failed_categories": failed_category_names,
         "require_all_configured_categories": REQUIRE_ALL_CONFIGURED_CATEGORIES_FOR_COMPLETE_VERDICT,
         "total_images": sum(packet["image_count"] for packet in category_packets),
         "status_counts": status_counts,
@@ -269,7 +280,8 @@ def run_final_aggregation(
     openai_client = openai_client or create_openai_client_from_env()
     category_outputs, source_files = load_category_outputs(settings, full_run_state)
     category_packets = build_category_packets(category_outputs)
-    global_rollup = build_global_rollup(category_packets)
+    failed_categories = full_run_state.get("failed_categories", []) if full_run_state else []
+    global_rollup = build_global_rollup(category_packets, failed_categories=failed_categories)
     payload = build_final_llm_payload(category_packets, global_rollup, source_files)
 
     response = parse_openai_structured_response(

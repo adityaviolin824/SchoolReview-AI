@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from school_safety_validator.api import fastapi_application
 from school_safety_validator.api import inspection_api_routes
 from school_safety_validator.api.fastapi_application import create_app
 from school_safety_validator.inspection_data_models import SchoolInspectionResult
@@ -49,6 +51,63 @@ def test_health_endpoint_returns_ok() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_api_output_root_is_root_level_runs_folder() -> None:
+    assert inspection_api_routes.API_OUTPUT_ROOT == (
+        inspection_api_routes.BACKEND_ROOT.parent / "runs" / "api_runs"
+    )
+
+
+def test_cleanup_old_api_runs_deletes_only_stale_run_directories(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
+    now = 2_000_000.0
+    old_run = tmp_path / "old-run"
+    fresh_run = tmp_path / "fresh-run"
+    old_run.mkdir()
+    fresh_run.mkdir()
+    untouched_file = tmp_path / "not-a-run.txt"
+    untouched_file.write_text("keep", encoding="utf-8")
+    stale_timestamp = now - inspection_api_routes.RUN_RETENTION_SECONDS - 10
+    os.utime(old_run, (stale_timestamp, stale_timestamp))
+    os.utime(fresh_run, (now, now))
+
+    deleted_paths = inspection_api_routes.cleanup_old_api_runs(now=now)
+
+    assert deleted_paths == [old_run]
+    assert not old_run.exists()
+    assert fresh_run.exists()
+    assert untouched_file.exists()
+
+
+def test_fastapi_lifespan_runs_api_cleanup(monkeypatch) -> None:
+    calls = []
+
+    def fake_cleanup_old_api_runs():
+        calls.append("cleanup")
+        return []
+
+    monkeypatch.setattr(fastapi_application, "cleanup_old_api_runs", fake_cleanup_old_api_runs)
+
+    with TestClient(create_app()):
+        pass
+
+    assert calls == ["cleanup"]
+
+
+def test_cors_allows_local_vite_frontend() -> None:
+    client = TestClient(create_app())
+
+    response = client.options(
+        "/inspection-runs",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
 def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_path: Path) -> None:
@@ -95,7 +154,12 @@ def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_
                     "saved_category_output_file": str(tmp_path / "hidden.json"),
                 }
             },
-            artifact_paths={"final_report:markdown_report": str(artifact)},
+            artifact_paths={
+                "run_id": options.run_id,
+                "output_root": str(tmp_path / options.run_id),
+                "materialized_input_root": str(tmp_path / options.run_id / "pipeline_inputs"),
+                "final_report:markdown_report": str(artifact),
+            },
             warnings=["Section warning."],
             errors=[],
         )
@@ -167,3 +231,31 @@ def test_upload_rejects_invalid_image_content_type(monkeypatch, tmp_path: Path) 
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Uploaded image content type does not match its extension."
+
+
+def test_failed_background_job_returns_sanitized_status_error(monkeypatch, tmp_path: Path) -> None:
+    inspection_api_routes.RUNS.clear()
+    monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
+
+    def fake_run_school_safety_pipeline(request, options):
+        raise RuntimeError("Internal failure with local filesystem details.")
+
+    monkeypatch.setattr(
+        inspection_api_routes,
+        "run_school_safety_pipeline",
+        fake_run_school_safety_pipeline,
+    )
+
+    client = TestClient(create_app())
+    run_id = create_run(client)
+
+    start_response = client.post(f"/inspection-runs/{run_id}/start", json={"generate_report": True})
+    assert start_response.status_code == 202
+
+    status_response = client.get(f"/inspection-runs/{run_id}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+
+    assert status_payload["status"] == "failed"
+    assert status_payload["errors"] == ["Pipeline failed. Check server logs for details."]
+    assert "Internal failure" not in str(status_payload)

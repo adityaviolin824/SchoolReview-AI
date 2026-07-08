@@ -134,3 +134,47 @@ def test_run_final_aggregation_saves_raw_validated_and_payload_json(tmp_path: Pa
     assert raw_output["provisional"] is False
     assert validated_output["overall_status"] == "insufficient_evidence"
     assert validated_output["provisional"] is True
+
+
+def test_run_final_aggregation_forces_provisional_for_failed_category_without_output(tmp_path: Path) -> None:
+    category_output_root = tmp_path / "category_outputs"
+    category_output_root.mkdir()
+    classroom_output = category_output_root / "classroom_image_assessments.json"
+    classroom_output.write_text(
+        """
+        {
+          "category": "classroom",
+          "image_count": 1,
+          "category_status": "acceptable_visible_condition",
+          "overall_officer_comment": "Overall comment.",
+          "issue_counts": {"high": 0, "medium": 0, "low": 0},
+          "human_review_required": false,
+          "key_findings": [],
+          "documentation_gaps": [],
+          "recommended_actions": []
+        }
+        """,
+        encoding="utf-8",
+    )
+    settings = ValidatorSettings(output_root=tmp_path)
+    full_run_state = {
+        "saved_category_output_files": {"classroom": classroom_output},
+        "failed_categories": ["electrical"],
+        "all_human_review_queue": [
+            {
+                "review_id": "electrical_category_failed",
+                "category_name": "electrical",
+                "image_id": "category",
+                "reason": "Category failed before compact output was saved.",
+                "status": "pending",
+            }
+        ],
+    }
+
+    result = run_final_aggregation(settings, FakeOpenAIClient(final_report()), full_run_state)
+
+    assert result["global_rollup"]["human_review_required"] is True
+    assert "electrical" in result["global_rollup"]["human_review_categories"]
+    assert "electrical" in result["global_rollup"]["not_inspected_categories"]
+    assert result["final_report"].overall_status == "insufficient_evidence"
+    assert result["final_report"].provisional is True

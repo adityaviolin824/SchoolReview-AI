@@ -46,13 +46,11 @@ class ValidatorSettings:
     max_concurrent_requests: int = 1
     confidence_threshold: float = 0.60
     langsmith_project: str = "school-safety-validator"
-    tracing_enabled: bool = True
 
 
 def get_settings(
     input_root: Path | None = None,
     output_root: Path | None = None,
-    tracing_enabled: bool | None = None,
     dotenv_override: bool = False,
 ) -> ValidatorSettings:
     """Load environment defaults and return workflow settings."""
@@ -61,14 +59,11 @@ def get_settings(
 
     settings = ValidatorSettings(
         langsmith_project=os.getenv("LANGSMITH_PROJECT", "school-safety-validator"),
-        tracing_enabled=os.getenv("LANGSMITH_TRACING", "true").lower() not in {"0", "false", "no"},
     )
     if input_root is not None:
         settings = replace(settings, input_root=input_root)
     if output_root is not None:
         settings = replace(settings, output_root=output_root)
-    if tracing_enabled is not None:
-        settings = replace(settings, tracing_enabled=tracing_enabled)
     return settings
 
 

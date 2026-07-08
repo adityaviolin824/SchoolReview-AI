@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+import shutil
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +24,7 @@ from school_safety_validator.inspection_data_models import (
 )
 from school_safety_validator.inspection_file_paths import SUPPORTED_IMAGE_EXTENSIONS
 from school_safety_validator.inspection_runtime_settings import BACKEND_ROOT, CATEGORY_NAMES
+from school_safety_validator.logging_config import logging
 from school_safety_validator.pipeline import run_school_safety_pipeline
 
 from .inspection_api_models import (
@@ -41,8 +44,10 @@ from .inspection_api_models import (
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-API_OUTPUT_ROOT = BACKEND_ROOT / "school_validation_outputs" / "api_runs"
+API_OUTPUT_ROOT = BACKEND_ROOT.parent / "runs" / "api_runs"
+RUN_RETENTION_SECONDS = 24 * 60 * 60
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 IMAGE_CONTENT_TYPES = {
     ".jpg": {"image/jpeg"},
@@ -76,6 +81,29 @@ class InspectionRunRecord:
 
 RUNS: dict[str, InspectionRunRecord] = {}
 PIPELINE_LOCK = threading.Lock()
+
+
+def cleanup_old_api_runs(max_age_seconds: int = RUN_RETENTION_SECONDS, now: float | None = None) -> list[Path]:
+    """Delete stale immediate run folders from the controlled API output root."""
+
+    deleted_paths: list[Path] = []
+    current_time = time.time() if now is None else now
+    API_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    resolved_root = API_OUTPUT_ROOT.resolve()
+
+    for child in API_OUTPUT_ROOT.iterdir():
+        if child.is_symlink() or not child.is_dir():
+            continue
+        if child.parent.resolve() != resolved_root:
+            continue
+        if current_time - child.stat().st_mtime <= max_age_seconds:
+            continue
+
+        shutil.rmtree(child)
+        deleted_paths.append(child)
+        logger.info("Deleted stale API run folder: %s", child.name)
+
+    return deleted_paths
 
 
 def validate_section_names(section_names: list[str]) -> None:
@@ -149,9 +177,23 @@ def sanitize_category_summaries(result: SchoolInspectionResult | None) -> dict[s
 def sanitized_errors(record: InspectionRunRecord) -> list[str]:
     """Return safe external errors without internal paths or stack traces."""
 
+    if record.errors:
+        return record.errors
     if record.status == "failed":
         return ["Pipeline failed. Check server logs for details."]
     return []
+
+
+def downloadable_artifact_names(result: SchoolInspectionResult, run_id: str) -> list[str]:
+    """Return artifact keys that resolve to files inside this API run root."""
+
+    resolved_run_root = run_root(run_id).resolve()
+    artifact_names = []
+    for artifact_name, artifact_path in result.artifact_paths.items():
+        resolved_path = Path(artifact_path).resolve()
+        if resolved_path.is_relative_to(resolved_run_root) and resolved_path.is_file():
+            artifact_names.append(artifact_name)
+    return sorted(artifact_names)
 
 
 def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusResponse:
@@ -159,7 +201,11 @@ def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusRes
 
     result = record.result
     if result is None:
-        return InspectionRunStatusResponse(run_id=record.run_id, status=record.status)
+        return InspectionRunStatusResponse(
+            run_id=record.run_id,
+            status=record.status,
+            errors=sanitized_errors(record),
+        )
 
     return InspectionRunStatusResponse(
         run_id=record.run_id,
@@ -176,7 +222,7 @@ def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusRes
             sanitize_human_review_item(item, record.human_review_decisions) for item in result.human_review_items
         ],
         category_summaries=sanitize_category_summaries(result),
-        artifacts=sorted(result.artifact_paths.keys()),
+        artifacts=downloadable_artifact_names(result, record.run_id),
         warnings=result.warnings,
         errors=sanitized_errors(record),
     )
@@ -239,13 +285,13 @@ def execute_pipeline_job(run_id: str, start_options: StartInspectionRunRequest) 
                 PipelineExecutionOptions(
                     output_root=API_OUTPUT_ROOT,
                     run_id=run_id,
-                    tracing_enabled=start_options.tracing_enabled,
                     generate_report=start_options.generate_report,
                 ),
             )
         record.result = result
         record.status = result.pipeline_status
     except Exception:
+        logger.exception("API inspection run %s failed unexpectedly.", run_id)
         record.status = "failed"
         record.errors = ["Pipeline failed. Check server logs for details."]
 
