@@ -63,6 +63,11 @@ IMAGE_CONTENT_TYPES = {
     ".jpeg": {"image/jpeg"},
     ".png": {"image/png"},
 }
+CATEGORY_FAILURE_IMAGE_ID = "__category__"
+CATEGORY_FAILURE_REVIEW_REASON = (
+    "The {category_name} category failed before an image-level review item was created. "
+    "Review the category run before final report generation."
+)
 
 
 @dataclass
@@ -212,8 +217,7 @@ def build_progress_response(record: InspectionRunRecord, input_status: InputStat
 def find_human_review_item(record: InspectionRunRecord, review_id: str) -> dict | None:
     """Return one raw human-review item for a run."""
 
-    review_items = record.result.human_review_items if record.result else []
-    for item in review_items:
+    for item in review_items_for_record(record):
         if str(item.get("review_id", "")) == review_id:
             return item
     return None
@@ -242,7 +246,24 @@ def review_items_for_record(record: InspectionRunRecord) -> list[dict]:
 
     if record.result is None:
         return []
-    return record.result.human_review_items
+    review_items = list(record.result.human_review_items)
+    existing_review_ids = {str(item.get("review_id", "")) for item in review_items}
+
+    for section_name in record.result.failed_sections:
+        review_id = f"{section_name}_category_failed"
+        if review_id in existing_review_ids:
+            continue
+        review_items.append(
+            {
+                "review_id": review_id,
+                "category_name": section_name,
+                "image_id": CATEGORY_FAILURE_IMAGE_ID,
+                "reason": CATEGORY_FAILURE_REVIEW_REASON.format(category_name=section_name),
+                "status": "pending",
+            }
+        )
+
+    return review_items
 
 
 def human_review_status_counts(record: InspectionRunRecord) -> dict[str, int]:
@@ -311,6 +332,7 @@ def run_summary_with_human_review(record: InspectionRunRecord) -> dict:
     if record.result is None:
         return {}
     run_summary = copy.deepcopy(record.result.run_summary)
+    run_summary["all_human_review_queue"] = review_items_for_record(record)
     run_summary["human_review_decisions"] = human_review_decision_records(record)
     return run_summary
 
@@ -446,7 +468,8 @@ def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusRes
         total_images=result.total_images,
         human_review_required=result.human_review_required,
         human_review_items=[
-            sanitize_human_review_item(record, item, record.human_review_decisions) for item in result.human_review_items
+            sanitize_human_review_item(record, item, record.human_review_decisions)
+            for item in review_items_for_record(record)
         ],
         category_summaries=sanitize_category_summaries(result),
         artifacts=downloadable_artifact_names(result, record.run_id),
@@ -534,7 +557,7 @@ def build_finalized_result(record: InspectionRunRecord, report_result: dict) -> 
         not_inspected_sections=global_rollup.get("not_inspected_categories", record.result.not_inspected_sections),
         total_images=global_rollup.get("total_images", record.result.total_images),
         human_review_required=bool(review_items_for_record(record)),
-        human_review_items=record.result.human_review_items,
+        human_review_items=review_items_for_record(record),
         category_summaries=record.result.category_summaries,
         run_summary=run_summary,
         artifact_paths=build_artifact_paths(options, run_summary, report_result),
@@ -735,7 +758,7 @@ def list_human_review_items(run_id: str) -> list[HumanReviewApiItem]:
         return []
     return [
         sanitize_human_review_item(record, item, record.human_review_decisions)
-        for item in record.result.human_review_items
+        for item in review_items_for_record(record)
     ]
 
 

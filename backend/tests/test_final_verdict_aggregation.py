@@ -37,6 +37,22 @@ def category_output(category: str = "classroom", status: str = "attention_requir
     }
 
 
+def acceptable_category_output(category: str = "classroom") -> dict:
+    """Build one category output with enough evidence and no visible issues."""
+
+    return {
+        "category": category,
+        "image_count": 1,
+        "category_status": "acceptable_visible_condition",
+        "overall_officer_comment": "Overall comment.",
+        "issue_counts": {"high": 0, "medium": 0, "low": 0},
+        "human_review_required": False,
+        "key_findings": [],
+        "documentation_gaps": [],
+        "recommended_actions": [],
+    }
+
+
 def final_report(overall_status: str = "acceptable_with_minor_issues") -> FinalInspectionLLMReport:
     """Build a valid final aggregation object for validation tests."""
 
@@ -99,6 +115,17 @@ def test_validate_final_report_upgrades_status_and_adds_not_inspected_limitation
     assert any("Not inspected categories:" in item for item in validated.limitations)
 
 
+def test_global_rollup_uses_selected_run_categories_as_required_scope() -> None:
+    packets = build_category_packets({"classroom": acceptable_category_output()})
+
+    rollup = build_global_rollup(packets, required_categories=["classroom"])
+
+    assert rollup["processed_categories"] == ["classroom"]
+    assert rollup["not_inspected_categories"] == []
+    assert rollup["deterministic_status_floor"] == "acceptable_with_minor_issues"
+    assert rollup["human_review_required"] is False
+
+
 def test_run_final_aggregation_saves_raw_validated_and_payload_json(tmp_path: Path) -> None:
     category_output_root = tmp_path / "category_outputs"
     category_output_root.mkdir()
@@ -134,6 +161,34 @@ def test_run_final_aggregation_saves_raw_validated_and_payload_json(tmp_path: Pa
     assert raw_output["provisional"] is False
     assert validated_output["overall_status"] == "insufficient_evidence"
     assert validated_output["provisional"] is True
+
+
+def test_run_final_aggregation_uses_run_category_names_for_selected_scope(tmp_path: Path) -> None:
+    category_output_root = tmp_path / "category_outputs"
+    category_output_root.mkdir()
+    classroom_output = category_output_root / "classroom_image_assessments.json"
+    classroom_output.write_text(
+        json.dumps(acceptable_category_output(), indent=2),
+        encoding="utf-8",
+    )
+    settings = ValidatorSettings(output_root=tmp_path)
+    full_run_state = {
+        "run_category_names": ["classroom"],
+        "saved_category_output_files": {"classroom": classroom_output},
+        "failed_categories": [],
+        "all_human_review_queue": [],
+    }
+
+    result = run_final_aggregation(
+        settings,
+        openai_client=FakeOpenAIClient(final_report()),
+        full_run_state=full_run_state,
+    )
+
+    assert result["global_rollup"]["not_inspected_categories"] == []
+    assert result["global_rollup"]["deterministic_status_floor"] == "acceptable_with_minor_issues"
+    assert result["final_report"].overall_status == "acceptable_with_minor_issues"
+    assert result["final_report"].provisional is False
 
 
 def test_run_final_aggregation_forces_provisional_for_failed_category_without_output(tmp_path: Path) -> None:

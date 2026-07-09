@@ -13,8 +13,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from school_safety_validator.inspection_data_models import PipelineExecutionOptions
+from school_safety_validator.logging_config import configure_logging
 from school_safety_validator.pipeline import load_school_inspection_request_json, run_school_safety_pipeline
-from utils.logger import configure_logging
 
 
 def parse_args() -> argparse.Namespace:

@@ -100,6 +100,16 @@ def configured_category_order(category_names: list[str]) -> list[str]:
     return [category_name for category_name in CATEGORY_NAMES if category_name in category_set]
 
 
+def required_categories_from_run_state(full_run_state: dict | None) -> list[str]:
+    """Return the category scope for this run, falling back to all configured categories."""
+
+    if full_run_state and full_run_state.get("run_category_names"):
+        return configured_category_order(
+            [str(category_name) for category_name in full_run_state["run_category_names"]]
+        )
+    return list(CATEGORY_NAMES)
+
+
 def compact_human_review_items(items: list[dict] | None) -> list[dict]:
     """Keep human-review item context without paths or raw model payloads."""
 
@@ -174,13 +184,15 @@ def build_global_rollup(
     failed_categories: list[str] | None = None,
     human_review_items: list[dict] | None = None,
     human_review_decisions: list[dict] | None = None,
+    required_categories: list[str] | None = None,
 ) -> dict:
     """Compute deterministic all-category totals for the final LLM."""
 
+    required_category_names = configured_category_order(required_categories or list(CATEGORY_NAMES))
     processed_categories = [packet["category"] for packet in category_packets]
     failed_category_names = configured_category_order(failed_categories or [])
     not_inspected_categories = [
-        category_name for category_name in CATEGORY_NAMES if category_name not in processed_categories
+        category_name for category_name in required_category_names if category_name not in processed_categories
     ]
     status_counts = {
         "acceptable_visible_condition": 0,
@@ -226,7 +238,7 @@ def build_global_rollup(
         status_floor = "acceptable_with_minor_issues"
 
     return {
-        "total_categories_configured": len(CATEGORY_NAMES),
+        "total_categories_configured": len(required_category_names),
         "processed_categories": processed_categories,
         "not_inspected_categories": not_inspected_categories,
         "failed_categories": failed_category_names,
@@ -370,11 +382,13 @@ def run_final_aggregation(
     failed_categories = full_run_state.get("failed_categories", []) if full_run_state else []
     human_review_items = full_run_state.get("all_human_review_queue", []) if full_run_state else []
     human_review_decisions = full_run_state.get("human_review_decisions", []) if full_run_state else []
+    required_categories = required_categories_from_run_state(full_run_state)
     global_rollup = build_global_rollup(
         category_packets,
         failed_categories=failed_categories,
         human_review_items=human_review_items,
         human_review_decisions=human_review_decisions,
+        required_categories=required_categories,
     )
     payload = build_final_llm_payload(category_packets, global_rollup, source_files)
 

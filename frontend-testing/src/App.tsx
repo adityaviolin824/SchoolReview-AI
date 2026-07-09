@@ -12,7 +12,7 @@ import {
   startRun,
   uploadImage,
 } from "./api";
-import type { ApiRunStatus, HumanReviewItem, RunStatusResponse, SectionName, UploadedImageResponse } from "./types";
+import type { HumanReviewItem, RunStatusResponse, SectionName, UploadedImageResponse } from "./types";
 
 const API_URL_STORAGE_KEY = "school-validator-api-url";
 const LAST_RUN_ID_STORAGE_KEY = "school-validator-last-run-id";

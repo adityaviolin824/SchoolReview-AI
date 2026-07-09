@@ -578,6 +578,108 @@ def test_api_run_supports_multiple_sections_and_human_review_decisions(monkeypat
     assert deferred_finalize_response.status_code == 409
 
 
+def test_category_failure_without_image_review_items_requires_review(monkeypatch, tmp_path: Path) -> None:
+    inspection_api_routes.RUNS.clear()
+    monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
+
+    def fake_run_school_safety_pipeline(request, options):
+        return SchoolInspectionResult(
+            school=request.school,
+            pipeline_status="completed_with_human_review_required",
+            overall_status=None,
+            provisional=None,
+            processed_sections=[],
+            failed_sections=["classroom"],
+            not_inspected_sections=[],
+            total_images=0,
+            human_review_required=True,
+            human_review_items=[],
+            category_summaries={
+                "classroom": {
+                    "category_status": "insufficient_evidence",
+                    "image_count": 0,
+                    "human_review_required": True,
+                    "human_review_item_count": 0,
+                }
+            },
+            run_summary={
+                "run_category_names": ["classroom"],
+                "processed_categories": [],
+                "failed_categories": ["classroom"],
+                "not_inspected_categories": [],
+                "all_human_review_queue": [],
+                "category_summaries": {},
+            },
+            artifact_paths={
+                "run_id": options.run_id,
+                "output_root": str(tmp_path / options.run_id),
+            },
+            warnings=[],
+            errors=[],
+        )
+
+    monkeypatch.setattr(
+        inspection_api_routes,
+        "run_school_safety_pipeline",
+        fake_run_school_safety_pipeline,
+    )
+
+    client = TestClient(create_app())
+    run_id = create_run(client)
+    upload_response = client.post(
+        f"/inspection-runs/{run_id}/sections/classroom/images",
+        files={"file": ("classroom.png", png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 201
+
+    start_response = client.post(f"/inspection-runs/{run_id}/start", json={"generate_report": False})
+    assert start_response.status_code == 202
+
+    status_response = client.get(f"/inspection-runs/{run_id}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    expected_reason = (
+        "The classroom category failed before an image-level review item was created. "
+        "Review the category run before final report generation."
+    )
+
+    assert status_payload["status"] == "awaiting_human_review"
+    assert status_payload["human_review_required"] is True
+    assert status_payload["human_review_items"] == [
+        {
+            "review_id": "classroom_category_failed",
+            "category_name": "classroom",
+            "image_id": "__category__",
+            "reason": expected_reason,
+            "status": "pending",
+            "image_available": False,
+            "model_summary": {
+                "risk_severity": "",
+                "risk_reason": "",
+                "recommended_action": "",
+                "officer_comment_status": "",
+                "officer_comment_reason": "",
+                "uncertainties": [],
+                "visible_findings": [],
+            },
+            "reviewer_notes": "",
+        }
+    ]
+
+    blocked_finalize_response = client.post(f"/inspection-runs/{run_id}/finalize-report")
+    assert blocked_finalize_response.status_code == 409
+
+    review_response = client.post(
+        f"/inspection-runs/{run_id}/human-review/classroom_category_failed",
+        json={"status": "reviewed", "notes": "Reviewed category failure."},
+    )
+    assert review_response.status_code == 200
+
+    reviewed_status_response = client.get(f"/inspection-runs/{run_id}")
+    assert reviewed_status_response.status_code == 200
+    assert reviewed_status_response.json()["status"] == "ready_for_report"
+
+
 def test_upload_rejects_invalid_image_content_type(monkeypatch, tmp_path: Path) -> None:
     inspection_api_routes.RUNS.clear()
     monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)

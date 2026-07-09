@@ -44,7 +44,6 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY backend/school_safety_validator ./school_safety_validator
 COPY backend/utility_files ./utility_files
-COPY backend/utils ./utils
 COPY --from=frontend-builder /app/frontend-final/dist ./static/frontend
 
 EXPOSE 8000

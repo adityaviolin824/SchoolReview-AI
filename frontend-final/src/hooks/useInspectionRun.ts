@@ -322,6 +322,7 @@ export function useInspectionRun() {
         );
         await refreshStatus();
       } catch (caughtError) {
+        await refreshStatus();
         showError(caughtError);
       } finally {
         setBusy(false);
