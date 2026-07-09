@@ -77,7 +77,7 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
             onClick={controller.createInspectionRun}
             disabled={controller.busy || controller.selectedSectionNames.length === 0}
           >
-            Create Inspection
+            {controller.isCreatingInspection ? "Creating..." : "Create Inspection"}
           </button>
         </div>
         <div className="category-grid">
@@ -156,7 +156,7 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
                     onClick={() => controller.uploadSectionImages(name)}
                     disabled={uploadDisabled || form.selectedFiles.length === 0}
                   >
-                    Upload
+                    {controller.uploadingSectionName === name ? "Uploading..." : "Upload"}
                   </button>
                 </article>
               );
@@ -176,7 +176,7 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
             </p>
           </div>
           <button type="button" className="primary-action" onClick={controller.startAssessment} disabled={!controller.canStart || controller.busy}>
-            Start Assessment
+            {controller.isStartingAssessment ? "Starting..." : "Start Assessment"}
           </button>
         </div>
       </section>

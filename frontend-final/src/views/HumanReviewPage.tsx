@@ -3,18 +3,22 @@ import { humanReviewImageUrl } from "../api";
 import { formatSectionName } from "../constants";
 import { StatusBadge } from "../components/StatusBadge";
 import type { InspectionRunController } from "../hooks/useInspectionRun";
+import type { AppRoute } from "../routing";
 
 type HumanReviewPageProps = {
   controller: InspectionRunController;
+  onNavigate: (route: AppRoute) => void;
 };
 
-export function HumanReviewPage({ controller }: HumanReviewPageProps) {
+export function HumanReviewPage({ controller, onNavigate }: HumanReviewPageProps) {
   const items = controller.runStatus?.human_review_items ?? [];
   const [selectedReviewId, setSelectedReviewId] = useState("");
   const selectedItem = useMemo(
     () => items.find((item) => item.review_id === selectedReviewId) ?? items[0] ?? null,
     [items, selectedReviewId],
   );
+  const reviewComplete = Boolean(items.length && controller.allReviewItemsReviewed);
+  const selectedItemIsSaving = Boolean(selectedItem && controller.savingReviewId === selectedItem.review_id);
 
   useEffect(() => {
     if (!selectedReviewId && items[0]) {
@@ -35,7 +39,16 @@ export function HumanReviewPage({ controller }: HumanReviewPageProps) {
     return (
       <section className="surface empty-state">
         <h2>No human review queue</h2>
-        <p>Flagged evidence will appear here after assessment if the model requests manual review.</p>
+        <p>
+          {controller.reportReady || controller.reportGenerating || controller.completedWithArtifacts
+            ? "No human review is pending. Continue to Reports."
+            : "Flagged evidence will appear here after assessment if the model requests manual review."}
+        </p>
+        {controller.reportReady || controller.reportGenerating || controller.completedWithArtifacts ? (
+          <button type="button" className="primary-action compact-action" onClick={() => onNavigate("reports")}>
+            Go to Reports
+          </button>
+        ) : null}
         <StatusBadge value={controller.runStatus.status} />
       </section>
     );
@@ -47,9 +60,24 @@ export function HumanReviewPage({ controller }: HumanReviewPageProps) {
         <div className="section-heading">
           <div>
             <h2>Review queue</h2>
-            <p>{items.length} flagged item(s) need a human decision before reporting can proceed.</p>
+            <p>
+              {reviewComplete
+                ? "Final review complete. Continue to Reports."
+                : `${controller.pendingReviewCount} flagged item${
+                    controller.pendingReviewCount === 1 ? "" : "s"
+                  } need a human decision before reporting can proceed.`}
+            </p>
           </div>
         </div>
+        {reviewComplete ? (
+          <div className="completion-callout">
+            <strong>Final review complete.</strong>
+            <p>Report generation is available on the Reports page.</p>
+            <button type="button" className="primary-action compact-action" onClick={() => onNavigate("reports")}>
+              Continue to Reports
+            </button>
+          </div>
+        ) : null}
         <div className="review-list">
           {items.map((item) => (
             <button
@@ -153,10 +181,10 @@ export function HumanReviewPage({ controller }: HumanReviewPageProps) {
               onClick={() => controller.saveReviewDecision(selectedItem, "reviewed")}
               disabled={controller.busy}
             >
-              Mark Reviewed
+              {selectedItemIsSaving ? "Saving..." : "Mark Reviewed"}
             </button>
             <button type="button" onClick={() => controller.saveReviewDecision(selectedItem, "deferred")} disabled={controller.busy}>
-              Defer
+              {selectedItemIsSaving ? "Saving..." : "Defer"}
             </button>
             <p>Deferred items stay visible and must be reviewed before report generation.</p>
           </div>

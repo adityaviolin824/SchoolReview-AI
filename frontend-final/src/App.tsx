@@ -29,13 +29,21 @@ export default function App() {
     window.location.hash = `/${nextRoute}`;
     setRoute(nextRoute);
   };
+  const attentionRoute: AppRoute | null = controller.reviewRequired
+    ? "human-review"
+    : controller.reportReady || controller.reportGenerating
+      ? "reports"
+      : null;
+  const routeBadges = controller.pendingReviewCount
+    ? { "human-review": controller.pendingReviewCount }
+    : undefined;
 
   return (
-    <AppShell route={route} onNavigate={navigate}>
+    <AppShell route={route} attentionRoute={attentionRoute} routeBadges={routeBadges} onNavigate={navigate}>
       <NoticeStack message={controller.message} error={controller.error} />
       {route === "overview" && <OverviewPage controller={controller} onNavigate={navigate} />}
       {route === "new-inspection" && <NewInspectionPage controller={controller} />}
-      {route === "human-review" && <HumanReviewPage controller={controller} />}
+      {route === "human-review" && <HumanReviewPage controller={controller} onNavigate={navigate} />}
       {route === "reports" && <ReportsPage controller={controller} />}
     </AppShell>
   );

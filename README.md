@@ -31,7 +31,7 @@ Implemented:
 - Markdown, HTML, JSON, and PDF report artifacts
 - ReportLab PDF rendering by default, with optional WeasyPrint support
 - FastAPI endpoints for creating runs, uploading images, starting assessment, recording human review, finalizing reports, and downloading artifacts
-- simple React + Vite frontend under `frontend/`
+- simple React + Vite frontend under `frontend-final/`
 - tests for deterministic logic, report rendering, and API behavior
 
 Known limits:
@@ -132,7 +132,7 @@ sequenceDiagram
       final_report_artifact_validation.py
     scripts/
     tests/
-  frontend/
+  frontend-final/
     package.json
     src/
       App.tsx
@@ -189,7 +189,7 @@ uv sync
 Frontend:
 
 ```bash
-cd frontend
+cd frontend-final
 npm install
 ```
 
@@ -232,7 +232,7 @@ runs/api_runs/<run_id>/
 
 ## Run The Frontend
 
-From `frontend/`:
+From `frontend-final/`:
 
 ```bash
 npm run dev
@@ -244,7 +244,7 @@ Open:
 http://127.0.0.1:5173
 ```
 
-The frontend stores only the API URL and last run ID in local storage. It does not store uploaded image files or secrets.
+The frontend stores only the last run ID in local storage. It does not store uploaded image files or secrets.
 
 ## Run From JSON
 
@@ -281,7 +281,7 @@ uv run pytest -q
 Frontend:
 
 ```bash
-cd frontend
+cd frontend-final
 npm run build
 ```
 

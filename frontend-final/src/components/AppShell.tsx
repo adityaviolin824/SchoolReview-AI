@@ -3,6 +3,8 @@ import { ROUTES, routeLabel, type AppRoute } from "../routing";
 
 type AppShellProps = {
   route: AppRoute;
+  attentionRoute?: AppRoute | null;
+  routeBadges?: Partial<Record<AppRoute, number | string>>;
   onNavigate: (route: AppRoute) => void;
   children: ReactNode;
 };
@@ -30,7 +32,7 @@ function RouteIcon({ route }: { route: AppRoute }) {
   );
 }
 
-export function AppShell({ route, onNavigate, children }: AppShellProps) {
+export function AppShell({ route, attentionRoute = null, routeBadges = {}, onNavigate, children }: AppShellProps) {
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -43,17 +45,24 @@ export function AppShell({ route, onNavigate, children }: AppShellProps) {
         </div>
 
         <nav className="main-nav" aria-label="Main navigation">
-          {ROUTES.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={item.id === route ? "nav-link nav-link-active" : "nav-link"}
-              onClick={() => onNavigate(item.id)}
-            >
-              <RouteIcon route={item.id} />
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {ROUTES.map((item) => {
+            const badge = routeBadges[item.id];
+            const classes = [
+              "nav-link",
+              item.id === route ? "nav-link-active" : "",
+              item.id === attentionRoute ? "nav-link-attention" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+
+            return (
+              <button key={item.id} type="button" className={classes} onClick={() => onNavigate(item.id)}>
+                <RouteIcon route={item.id} />
+                <span>{item.label}</span>
+                {badge ? <strong className="nav-badge">{badge}</strong> : null}
+              </button>
+            );
+          })}
         </nav>
       </aside>
 

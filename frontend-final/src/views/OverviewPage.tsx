@@ -24,6 +24,29 @@ export function OverviewPage({ controller, onNavigate }: OverviewPageProps) {
   );
   const humanReviewCount = runStatus?.human_review_items.length ?? 0;
   const readyMessage = runStatus?.progress?.message ?? "Start a new inspection to begin.";
+  const nextActionMessage = (() => {
+    if (!runStatus) {
+      return "Create an inspection and upload evidence to begin.";
+    }
+    if (controller.assessmentRunning) {
+      return "Assessment is running. This view refreshes as work completes.";
+    }
+    if (controller.reviewRequired) {
+      return `Review ${controller.pendingReviewCount} flagged item${
+        controller.pendingReviewCount === 1 ? "" : "s"
+      } before report generation.`;
+    }
+    if (controller.reportGenerating) {
+      return "Final review is complete. Report generation is in progress.";
+    }
+    if (controller.reportReady) {
+      return "Review is complete. Generate the final report from Reports.";
+    }
+    if (controller.completedWithArtifacts) {
+      return "Report is ready for download.";
+    }
+    return "Continue when the current step is complete.";
+  })();
 
   return (
     <div className="page-grid overview-grid">
@@ -86,17 +109,28 @@ export function OverviewPage({ controller, onNavigate }: OverviewPageProps) {
         <div className="section-heading">
           <div>
             <h2>Next action</h2>
-            <p>Continue when the current step is complete.</p>
+            <p>{nextActionMessage}</p>
           </div>
         </div>
         <div className="action-rail">
           <button type="button" onClick={() => onNavigate("new-inspection")}>
             Setup and uploads
           </button>
-          <button type="button" onClick={() => onNavigate("human-review")} disabled={!runStatus}>
+          <button
+            type="button"
+            className={controller.reviewRequired ? "attention-action" : undefined}
+            onClick={() => onNavigate("human-review")}
+            disabled={!runStatus}
+          >
             Review evidence
+            {controller.pendingReviewCount ? <span className="action-badge">{controller.pendingReviewCount}</span> : null}
           </button>
-          <button type="button" onClick={() => onNavigate("reports")} disabled={!runStatus}>
+          <button
+            type="button"
+            className={controller.reportReady || controller.reportGenerating ? "attention-action" : undefined}
+            onClick={() => onNavigate("reports")}
+            disabled={!runStatus}
+          >
             Reports
           </button>
         </div>

@@ -33,6 +33,7 @@ export type SectionFormState = {
 };
 
 export type SectionFormStateMap = Record<SectionName, SectionFormState>;
+type ActiveOperation = "create" | "upload" | "start" | "finalize" | "review" | "";
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -101,6 +102,9 @@ export function useInspectionRun() {
   const [message, setMessage] = useState("Ready.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activeOperation, setActiveOperation] = useState<ActiveOperation>("");
+  const [uploadingSectionName, setUploadingSectionName] = useState<SectionName | null>(null);
+  const [savingReviewId, setSavingReviewId] = useState("");
 
   const [schoolName, setSchoolName] = useState("Example Government School");
   const [inspectionDate, setInspectionDate] = useState(todayIsoDate());
@@ -123,12 +127,17 @@ export function useInspectionRun() {
   );
   const uploadSectionNames = statusSectionNames.length ? statusSectionNames : runSections.length ? runSections : selectedSectionNames;
   const currentStatus = runStatus?.status;
+  const reviewItems = runStatus?.human_review_items ?? [];
+  const pendingReviewCount = reviewItems.filter((item) => item.status !== "reviewed").length;
+  const reviewRequired = currentStatus === "awaiting_human_review" || pendingReviewCount > 0;
+  const assessmentRunning = currentStatus === "running";
+  const reportGenerating = currentStatus === "finalizing_report";
+  const completedWithArtifacts = currentStatus === "completed" && Boolean(runStatus?.artifacts.length);
   const canUpload = Boolean(runId) && (!currentStatus || currentStatus === "created");
   const canStart = Boolean(runId) && (!currentStatus || currentStatus === "created") && Boolean(runStatus?.input_status.can_start);
-  const allReviewItemsReviewed = Boolean(
-    runStatus && runStatus.human_review_items.every((item) => item.status === "reviewed"),
-  );
+  const allReviewItemsReviewed = Boolean(runStatus && reviewItems.every((item) => item.status === "reviewed"));
   const canFinalizeReport = Boolean(runId && runStatus?.status === "ready_for_report" && allReviewItemsReviewed);
+  const reportReady = canFinalizeReport;
   const totalUploadedImages = SECTION_NAMES.reduce(
     (total, name) => total + (runStatus?.input_status.sections[name]?.image_count ?? sectionForms[name].uploadedImages.length),
     0,
@@ -213,6 +222,7 @@ export function useInspectionRun() {
     }
 
     setBusy(true);
+    setActiveOperation("create");
     setError("");
     try {
       const response = await createRun(normalizedApiUrl, {
@@ -268,6 +278,7 @@ export function useInspectionRun() {
       showError(caughtError);
     } finally {
       setBusy(false);
+      setActiveOperation("");
     }
   }, [inspectionDate, location, normalizedApiUrl, schoolName, sectionForms, selectedSectionNames, showError]);
 
@@ -289,6 +300,8 @@ export function useInspectionRun() {
       }
 
       setBusy(true);
+      setActiveOperation("upload");
+      setUploadingSectionName(sectionName);
       setError("");
       try {
         const uploaded = await Promise.all(
@@ -312,6 +325,8 @@ export function useInspectionRun() {
         showError(caughtError);
       } finally {
         setBusy(false);
+        setActiveOperation("");
+        setUploadingSectionName(null);
       }
     },
     [normalizedApiUrl, refreshStatus, runId, runSections, sectionForms, showError],
@@ -319,6 +334,7 @@ export function useInspectionRun() {
 
   const startAssessment = useCallback(async () => {
     setBusy(true);
+    setActiveOperation("start");
     setError("");
     try {
       await startRun(normalizedApiUrl, runId);
@@ -329,11 +345,13 @@ export function useInspectionRun() {
       showError(caughtError);
     } finally {
       setBusy(false);
+      setActiveOperation("");
     }
   }, [normalizedApiUrl, refreshStatus, runId, showError]);
 
   const finalizeCurrentReport = useCallback(async () => {
     setBusy(true);
+    setActiveOperation("finalize");
     setError("");
     try {
       await finalizeReport(normalizedApiUrl, runId);
@@ -344,12 +362,15 @@ export function useInspectionRun() {
       showError(caughtError);
     } finally {
       setBusy(false);
+      setActiveOperation("");
     }
   }, [normalizedApiUrl, refreshStatus, runId, showError]);
 
   const saveReviewDecision = useCallback(
     async (item: HumanReviewItem, status: ReviewDecisionStatus) => {
       setBusy(true);
+      setActiveOperation("review");
+      setSavingReviewId(item.review_id);
       setError("");
       try {
         await recordHumanReviewDecision(normalizedApiUrl, runId, item, status, reviewNotes[item.review_id] ?? "");
@@ -359,6 +380,8 @@ export function useInspectionRun() {
         showError(caughtError);
       } finally {
         setBusy(false);
+        setActiveOperation("");
+        setSavingReviewId("");
       }
     },
     [normalizedApiUrl, refreshStatus, reviewNotes, runId, showError],
@@ -382,11 +405,26 @@ export function useInspectionRun() {
     runStatus,
     reviewNotes,
     setReviewNotes,
+    activeOperation,
+    uploadingSectionName,
+    savingReviewId,
     selectedSectionNames,
     uploadSectionNames,
     canUpload,
     canStart,
     canFinalizeReport,
+    allReviewItemsReviewed,
+    pendingReviewCount,
+    reviewRequired,
+    assessmentRunning,
+    reportReady,
+    reportGenerating,
+    completedWithArtifacts,
+    isCreatingInspection: activeOperation === "create",
+    isUploadingImages: activeOperation === "upload",
+    isStartingAssessment: activeOperation === "start",
+    isFinalizingReport: activeOperation === "finalize",
+    isSavingReview: activeOperation === "review",
     totalUploadedImages,
     refreshStatus,
     createInspectionRun,

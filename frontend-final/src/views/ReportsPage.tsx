@@ -7,9 +7,39 @@ type ReportsPageProps = {
   controller: InspectionRunController;
 };
 
+function reportReadinessMessage(controller: InspectionRunController): string {
+  const status = controller.runStatus?.status;
+  if (controller.assessmentRunning) {
+    return "Assessment is still running. Report generation becomes available after assessment and required review.";
+  }
+  if (controller.reviewRequired) {
+    return `Review ${controller.pendingReviewCount} flagged item${
+      controller.pendingReviewCount === 1 ? "" : "s"
+    } before generating the report.`;
+  }
+  if (controller.reportReady) {
+    return "Review is complete. Generate the final report when ready.";
+  }
+  if (controller.reportGenerating) {
+    return "Final review complete. Generating report. This page refreshes automatically.";
+  }
+  if (controller.completedWithArtifacts) {
+    return "Report ready. Download files below.";
+  }
+  if (status === "completed") {
+    return "Report generation finished, but no files are listed yet. Refresh the inspection status.";
+  }
+  if (status === "failed") {
+    return "Assessment failed. Report generation is not available.";
+  }
+  return controller.runStatus?.progress?.message ?? "Status is available for the current inspection.";
+}
+
 export function ReportsPage({ controller }: ReportsPageProps) {
   const runStatus = controller.runStatus;
   const artifacts = runStatus?.artifacts ?? [];
+  const readinessMessage = reportReadinessMessage(controller);
+  const isGenerating = controller.reportGenerating || controller.isFinalizingReport;
 
   if (!runStatus) {
     return (
@@ -23,23 +53,37 @@ export function ReportsPage({ controller }: ReportsPageProps) {
   return (
     <div className="page-grid reports-grid">
       <section className="surface report-cover">
-        <div className="report-paper">
-          <span>Facility Condition Assessment Report</span>
-          <h2>{readableStatus(runStatus.overall_status)}</h2>
-          <p>Generated after model assessment and required human review decisions.</p>
-          <div className="report-lines">
-            <i />
-            <i />
-            <i />
+        {controller.reportGenerating ? (
+          <div className="report-generation-card">
+            <div className="loading-spinner" aria-hidden="true" />
+            <span>Report generation</span>
+            <h2>Generating report</h2>
+            <p>Final review is complete. Report files will appear here when generation finishes.</p>
+            <div className="report-skeleton" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="report-paper">
+            <span>Facility Condition Assessment Report</span>
+            <h2>{readableStatus(runStatus.overall_status)}</h2>
+            <p>Generated after model assessment and required human review decisions.</p>
+            <div className="report-lines">
+              <i />
+              <i />
+              <i />
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="surface">
         <div className="section-heading">
           <div>
             <h2>Report readiness</h2>
-            <p>{runStatus.progress?.message ?? "Status is available for the current inspection."}</p>
+            <p>{readinessMessage}</p>
           </div>
           <StatusBadge value={runStatus.status} />
         </div>
@@ -63,18 +107,20 @@ export function ReportsPage({ controller }: ReportsPageProps) {
           </div>
         </div>
 
-        <button
-          type="button"
-          className="primary-action"
-          onClick={controller.finalizeCurrentReport}
-          disabled={!controller.canFinalizeReport || controller.busy}
-        >
-          Generate Report
-        </button>
-        {!controller.canFinalizeReport && (
-          <p className="quiet-copy">
-            Reports can be generated only after assessment completes and every human-review item is marked reviewed.
-          </p>
+        {runStatus.status === "completed" ? (
+          <p className="quiet-copy">Report files are listed below when available.</p>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="primary-action"
+              onClick={controller.finalizeCurrentReport}
+              disabled={!controller.canFinalizeReport || controller.busy || controller.reportGenerating}
+            >
+              {isGenerating ? "Generating report..." : "Generate Report"}
+            </button>
+            {!controller.canFinalizeReport ? <p className="quiet-copy">{readinessMessage}</p> : null}
+          </>
         )}
       </section>
 
@@ -85,7 +131,15 @@ export function ReportsPage({ controller }: ReportsPageProps) {
             <p>Report files appear here after generation.</p>
           </div>
         </div>
-        {artifacts.length ? (
+        {controller.reportGenerating ? (
+          <div className="report-loading-state">
+            <div className="loading-spinner" aria-hidden="true" />
+            <div>
+              <h3>Final review complete. Generating report.</h3>
+              <p>This page refreshes automatically while the report files are being prepared.</p>
+            </div>
+          </div>
+        ) : artifacts.length ? (
           <div className="artifact-list">
             {artifacts.map((artifact) => (
               <a
@@ -100,7 +154,7 @@ export function ReportsPage({ controller }: ReportsPageProps) {
             ))}
           </div>
         ) : (
-          <p className="quiet-copy">No report artifacts are available yet.</p>
+          <p className="quiet-copy">Report files will appear here after generation.</p>
         )}
       </section>
 
