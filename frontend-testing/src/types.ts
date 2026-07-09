@@ -1,4 +1,12 @@
-export type ApiRunStatus = "created" | "running" | "completed" | "completed_with_human_review_required" | "failed";
+export type ApiRunStatus =
+  | "created"
+  | "running"
+  | "awaiting_human_review"
+  | "ready_for_report"
+  | "finalizing_report"
+  | "completed"
+  | "completed_with_human_review_required"
+  | "failed";
 
 export type PipelineStatus = "completed" | "completed_with_human_review_required" | "failed";
 
@@ -68,9 +76,28 @@ export type CategorySummary = {
   human_review_item_count: number;
 };
 
+export type InputSectionStatus = {
+  selected: boolean;
+  image_count: number;
+  ready: boolean;
+};
+
+export type InputStatus = {
+  can_start: boolean;
+  missing_image_sections: string[];
+  sections: Record<string, InputSectionStatus>;
+};
+
+export type RunProgress = {
+  phase: ApiRunStatus;
+  message: string;
+};
+
 export type RunStatusResponse = {
   run_id: string;
   status: ApiRunStatus;
+  input_status: InputStatus;
+  progress: RunProgress | null;
   pipeline_status: PipelineStatus | null;
   overall_status: OverallInspectionStatus | null;
   provisional: boolean | null;

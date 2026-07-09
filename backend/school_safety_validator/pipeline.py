@@ -201,6 +201,11 @@ def build_pipeline_result(
     failed_sections = run_summary.get("failed_categories", [])
     human_review_items = run_summary.get("all_human_review_queue", [])
     human_review_required = bool(human_review_items or failed_sections or global_rollup.get("human_review_required"))
+    total_images = global_rollup.get("total_images")
+    if total_images is None:
+        total_images = sum(
+            summary.get("image_count", 0) for summary in run_summary.get("category_summaries", {}).values()
+        )
 
     pipeline_status = "failed" if errors else "completed"
     if pipeline_status == "completed" and human_review_required:
@@ -217,7 +222,7 @@ def build_pipeline_result(
             "not_inspected_categories",
             run_summary.get("not_inspected_categories", []),
         ),
-        total_images=global_rollup.get("total_images", 0),
+        total_images=total_images,
         human_review_required=human_review_required,
         human_review_items=human_review_items,
         category_summaries=run_summary.get("category_summaries", {}),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -110,20 +111,84 @@ def test_cors_allows_local_vite_frontend() -> None:
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
-def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_path: Path) -> None:
+def test_start_blocks_selected_sections_without_images(monkeypatch, tmp_path: Path) -> None:
+    inspection_api_routes.RUNS.clear()
+    monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
+    client = TestClient(create_app())
+    create_response = client.post(
+        "/inspection-runs",
+        json={
+            "school": {
+                "name": "Example Government School",
+                "inspection_date": "2026-06-30",
+                "location": "Example District",
+            },
+            "sections": [
+                {
+                    "section_name": "classroom",
+                    "section_comment": "Classroom section comment.",
+                },
+                {
+                    "section_name": "washroom",
+                    "section_comment": "Washroom section comment.",
+                },
+            ],
+        },
+    )
+    assert create_response.status_code == 201
+    run_id = create_response.json()["run_id"]
+
+    initial_status_response = client.get(f"/inspection-runs/{run_id}")
+    assert initial_status_response.status_code == 200
+    initial_status = initial_status_response.json()
+    assert initial_status["input_status"]["can_start"] is False
+    assert initial_status["input_status"]["missing_image_sections"] == ["classroom", "washroom"]
+    assert initial_status["progress"]["message"] == "Upload at least one image for: classroom, washroom."
+
+    classroom_upload = client.post(
+        f"/inspection-runs/{run_id}/sections/classroom/images",
+        files={"file": ("classroom.png", png_bytes(), "image/png")},
+        data={"comment": "Classroom image comment."},
+    )
+    assert classroom_upload.status_code == 201
+
+    partial_start_response = client.post(f"/inspection-runs/{run_id}/start", json={"generate_report": False})
+    assert partial_start_response.status_code == 409
+    assert partial_start_response.json()["detail"] == {
+        "code": "missing_section_images",
+        "message": "Each selected section needs at least one image before assessment starts.",
+        "sections": ["washroom"],
+    }
+
+    partial_status_response = client.get(f"/inspection-runs/{run_id}")
+    assert partial_status_response.status_code == 200
+    partial_status = partial_status_response.json()
+    assert partial_status["status"] == "created"
+    assert partial_status["input_status"]["can_start"] is False
+    assert partial_status["input_status"]["sections"]["classroom"] == {
+        "selected": True,
+        "image_count": 1,
+        "ready": True,
+    }
+    assert partial_status["input_status"]["sections"]["washroom"] == {
+        "selected": True,
+        "image_count": 0,
+        "ready": False,
+    }
+
+
+def test_api_run_upload_start_status_review_then_final_report(monkeypatch, tmp_path: Path) -> None:
     inspection_api_routes.RUNS.clear()
     monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
 
     def fake_run_school_safety_pipeline(request, options):
         assert options.output_root == tmp_path
         assert options.run_id
+        assert options.generate_report is False
         assert request.sections[0].images[0].image_path.is_relative_to(
             tmp_path / options.run_id / "uploads" / "classroom"
         )
 
-        artifact = tmp_path / options.run_id / "final_reports" / "school_safety_final_report.md"
-        artifact.parent.mkdir(parents=True, exist_ok=True)
-        artifact.write_text("# Report", encoding="utf-8")
         review_image = tmp_path / options.run_id / "pipeline_inputs" / "classroom" / "images" / "classroom_001.png"
         review_image.parent.mkdir(parents=True, exist_ok=True)
         review_image.write_bytes(png_bytes())
@@ -191,16 +256,53 @@ def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_
                 "run_id": options.run_id,
                 "output_root": str(tmp_path / options.run_id),
                 "materialized_input_root": str(tmp_path / options.run_id / "pipeline_inputs"),
-                "final_report:markdown_report": str(artifact),
             },
             warnings=["Section warning."],
             errors=[],
         )
 
+    def fake_run_final_report_generation(settings, full_run_state):
+        assert settings.output_root == tmp_path / run_id
+        assert full_run_state["human_review_decisions"] == [
+            {
+                "review_id": "review-1",
+                "category_name": "classroom",
+                "image_id": "classroom_001.png",
+                "status": "reviewed",
+                "notes": "Reviewed manually.",
+            }
+        ]
+        artifact = tmp_path / run_id / "final_reports" / "school_safety_final_report.md"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("# Report", encoding="utf-8")
+        return {
+            "aggregation": {
+                "final_report": SimpleNamespace(
+                    overall_status="insufficient_evidence",
+                    provisional=False,
+                ),
+                "global_rollup": {
+                    "processed_categories": ["classroom"],
+                    "failed_categories": [],
+                    "not_inspected_categories": [],
+                    "total_images": 1,
+                },
+                "paths": {},
+            },
+            "report_paths": {
+                "markdown_report": artifact,
+            },
+        }
+
     monkeypatch.setattr(
         inspection_api_routes,
         "run_school_safety_pipeline",
         fake_run_school_safety_pipeline,
+    )
+    monkeypatch.setattr(
+        inspection_api_routes,
+        "run_final_report_generation",
+        fake_run_final_report_generation,
     )
 
     client = TestClient(create_app())
@@ -220,7 +322,7 @@ def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_
     assert status_response.status_code == 200
     status_payload = status_response.json()
 
-    assert status_payload["status"] == "completed_with_human_review_required"
+    assert status_payload["status"] == "awaiting_human_review"
     assert status_payload["human_review_required"] is True
     review_item = status_payload["human_review_items"][0]
     assert review_item["review_id"] == "review-1"
@@ -250,7 +352,7 @@ def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_
     assert "raw_image_path" not in str(status_payload)
     assert "model_assessment" not in str(status_payload)
     assert "saved_category_output_file" not in str(status_payload)
-    assert status_payload["artifacts"] == ["final_report:markdown_report"]
+    assert status_payload["artifacts"] == []
 
     image_response = client.get(f"/inspection-runs/{run_id}/human-review/review-1/image")
     assert image_response.status_code == 200
@@ -258,6 +360,9 @@ def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_
 
     unknown_image_response = client.get(f"/inspection-runs/{run_id}/human-review/unknown-review/image")
     assert unknown_image_response.status_code == 404
+
+    blocked_finalize_response = client.post(f"/inspection-runs/{run_id}/finalize-report")
+    assert blocked_finalize_response.status_code == 409
 
     review_response = client.post(
         f"/inspection-runs/{run_id}/human-review/review-1",
@@ -271,9 +376,29 @@ def test_api_run_upload_start_status_human_review_and_artifact(monkeypatch, tmp_
     assert review_items_response.json()[0]["status"] == "reviewed"
     assert review_items_response.json()[0]["reviewer_notes"] == "Reviewed manually."
 
+    reviewed_status_response = client.get(f"/inspection-runs/{run_id}")
+    assert reviewed_status_response.status_code == 200
+    assert reviewed_status_response.json()["status"] == "ready_for_report"
+    assert reviewed_status_response.json()["artifacts"] == []
+
+    finalize_response = client.post(f"/inspection-runs/{run_id}/finalize-report")
+    assert finalize_response.status_code == 202
+    assert finalize_response.json()["status"] == "finalizing_report"
+
+    finalized_status_response = client.get(f"/inspection-runs/{run_id}")
+    assert finalized_status_response.status_code == 200
+    finalized_payload = finalized_status_response.json()
+    assert finalized_payload["status"] == "completed"
+    assert finalized_payload["overall_status"] == "insufficient_evidence"
+    assert finalized_payload["provisional"] is False
+    assert finalized_payload["artifacts"] == ["final_report:markdown_report"]
+
     artifact_response = client.get(f"/inspection-runs/{run_id}/artifacts/final_report:markdown_report")
     assert artifact_response.status_code == 200
     assert artifact_response.text == "# Report"
+
+    duplicate_finalize_response = client.post(f"/inspection-runs/{run_id}/finalize-report")
+    assert duplicate_finalize_response.status_code == 409
 
 
 def test_api_run_supports_multiple_sections_and_human_review_decisions(monkeypatch, tmp_path: Path) -> None:
@@ -399,6 +524,7 @@ def test_api_run_supports_multiple_sections_and_human_review_decisions(monkeypat
     assert status_response.status_code == 200
     status_payload = status_response.json()
 
+    assert status_payload["status"] == "awaiting_human_review"
     assert status_payload["processed_sections"] == ["classroom", "washroom"]
     assert status_payload["total_images"] == 2
     assert status_payload["human_review_required"] is True
@@ -414,6 +540,9 @@ def test_api_run_supports_multiple_sections_and_human_review_decisions(monkeypat
     unsafe_image_response = client.get(f"/inspection-runs/{run_id}/human-review/classroom-review/image")
     assert unsafe_image_response.status_code == 404
 
+    blocked_finalize_response = client.post(f"/inspection-runs/{run_id}/finalize-report")
+    assert blocked_finalize_response.status_code == 409
+
     review_response = client.post(
         f"/inspection-runs/{run_id}/human-review/washroom-review",
         json={"status": "deferred", "notes": "Deferred for later manual review."},
@@ -427,6 +556,9 @@ def test_api_run_supports_multiple_sections_and_human_review_decisions(monkeypat
     assert review_items[0]["status"] == "pending"
     assert review_items[1]["status"] == "deferred"
     assert review_items[1]["reviewer_notes"] == "Deferred for later manual review."
+
+    deferred_finalize_response = client.post(f"/inspection-runs/{run_id}/finalize-report")
+    assert deferred_finalize_response.status_code == 409
 
 
 def test_upload_rejects_invalid_image_content_type(monkeypatch, tmp_path: Path) -> None:
@@ -444,6 +576,27 @@ def test_upload_rejects_invalid_image_content_type(monkeypatch, tmp_path: Path) 
     assert response.json()["detail"] == "Uploaded image content type does not match its extension."
 
 
+def test_upload_rejects_images_larger_than_limit(monkeypatch, tmp_path: Path) -> None:
+    inspection_api_routes.RUNS.clear()
+    monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
+    client = TestClient(create_app())
+    run_id = create_run(client)
+
+    response = client.post(
+        f"/inspection-runs/{run_id}/sections/classroom/images",
+        files={
+            "file": (
+                "classroom.png",
+                b"0" * (inspection_api_routes.MAX_UPLOAD_BYTES + 1),
+                "image/png",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Uploaded image is larger than 10 MB."
+
+
 def test_failed_background_job_returns_sanitized_status_error(monkeypatch, tmp_path: Path) -> None:
     inspection_api_routes.RUNS.clear()
     monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)
@@ -459,6 +612,11 @@ def test_failed_background_job_returns_sanitized_status_error(monkeypatch, tmp_p
 
     client = TestClient(create_app())
     run_id = create_run(client)
+    upload_response = client.post(
+        f"/inspection-runs/{run_id}/sections/classroom/images",
+        files={"file": ("classroom.png", png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 201
 
     start_response = client.post(f"/inspection-runs/{run_id}/start", json={"generate_report": True})
     assert start_response.status_code == 202

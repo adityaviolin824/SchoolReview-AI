@@ -88,6 +88,8 @@ def build_report_appendix(metadata: dict) -> dict:
         "not_inspected_categories": metadata["not_inspected_categories"],
         "total_images": metadata["total_images"],
         "deterministic_status_floor": metadata["deterministic_status_floor"],
+        "human_review_completed": metadata.get("human_review_completed", False),
+        "human_review_decisions": metadata.get("human_review_decisions", []),
     }
 
 
@@ -223,6 +225,20 @@ def build_global_action_groups(content: FinalReportContent) -> list[dict]:
     ]
 
 
+def build_human_review_decision_rows(metadata: dict) -> list[dict]:
+    """Return exact human-review decisions for deterministic report display."""
+
+    return [
+        {
+            "category": str(decision.get("category_name", "")),
+            "image_id": str(decision.get("image_id", "")),
+            "status": str(decision.get("status", "")),
+            "notes": str(decision.get("notes", "")),
+        }
+        for decision in metadata.get("human_review_decisions", [])
+    ]
+
+
 def build_report_view_model(content: FinalReportContent, metadata: dict, category_packets: list[dict]) -> dict:
     """Build deterministic display data for Markdown, HTML, and PDF renderers."""
 
@@ -240,6 +256,8 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
         "not_inspected_categories": not_inspected_categories,
         "total_images": metadata["total_images"],
         "human_review_items": human_review_items,
+        "human_review_completed": metadata.get("human_review_completed", False),
+        "human_review_decision_rows": build_human_review_decision_rows(metadata),
         "issue_counts": issue_counts,
         "deterministic_status_floor": metadata["deterministic_status_floor"],
         "category_table": build_category_table_rows(content, category_packets),
@@ -328,6 +346,10 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
         f"- {item['category']}: {item['path']} ({item['last_modified_utc']})"
         for item in metadata["category_output_sources"]
     ]
+    decision_lines = [
+        f"- {row['category']} / {row['image_id']}: {row['status']} - {row['notes'] or 'No reviewer notes.'}"
+        for row in view["human_review_decision_rows"]
+    ]
     cover_lines = []
     if metadata.get("cover_image_path"):
         cover_lines = [f"![Report cover]({metadata['cover_image_path']})", ""]
@@ -339,14 +361,17 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             "## Status Dashboard\n\n"
             f"- Report status: {view['report_status_label']}\n"
             f"- Categories not inspected: {len(view['not_inspected_categories'])}\n"
-            f"- Human review items: {view['human_review_items']}\n"
             f"- Total images: {view['total_images']}\n"
             f"- Deterministic status floor: {metadata['deterministic_status_floor']}",
             "## Human Review Notice\n\n"
             + (
-                "This report is provisional and requires human review before decisions are made."
-                if content.provisional or view["human_review_items"]
-                else "No human review items were recorded in the validated report content."
+                "Human review was completed before this final report was generated."
+                if view["human_review_items"] and view["human_review_completed"]
+                else (
+                    "This report is provisional and requires human review before decisions are made."
+                    if content.provisional or view["human_review_items"]
+                    else "No human review items were recorded in the validated report content."
+                )
             ),
             "## Executive Summary\n\n" + markdown_list(view["executive_summary"]),
             "## Key Risks\n\n" + markdown_list(view["key_risks"]),
@@ -362,6 +387,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
                 for group in view["global_action_groups"]
             ),
             "## Human Review Notes\n\n" + markdown_list(view["human_review_notes"]),
+            "## Human Review Decisions\n\n" + markdown_list(decision_lines),
             "## Section-wise Findings\n\n" + "\n\n".join(category_sections),
             "## Limitations and Disclaimer\n\n" + markdown_list(view["limitations"]) + f"\n\n{content.disclaimer}",
             "## Machine-Readable Appendix\n\n```json\n"
@@ -476,7 +502,6 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
   <div class="cover-grid">
     <div class="cover-panel"><div class="cover-label">Report status</div><div class="cover-value">{{ view.report_status_label }}</div></div>
     <div class="cover-panel"><div class="cover-label">Evidence images</div><div class="cover-value">{{ view.total_images }}</div></div>
-    <div class="cover-panel"><div class="cover-label">Review items</div><div class="cover-value">{{ view.human_review_items }}</div></div>
   </div>
   {% if cover_image_url %}<div class="cover-image"><img src="{{ cover_image_url }}" alt="School inspection report visual"></div>{% endif %}
   <div class="cover-footer">{{ view.disclaimer }}</div>
@@ -490,9 +515,10 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
   <div class="metric-card"><div class="metric-label">Report status</div><div class="metric-value">{{ view.report_status_label }}</div><div class="metric-note">Human review before decisions</div></div>
   <div class="metric-card"><div class="metric-label">Evidence</div><div class="metric-value">{{ view.total_images }}</div><div class="metric-note">Images represented in category packets</div></div>
   <div class="metric-card"><div class="metric-label">Not inspected</div><div class="metric-value">{{ view.not_inspected_categories|length }}</div><div class="metric-note">Configured categories without evidence</div></div>
-  <div class="metric-card"><div class="metric-label">Review items</div><div class="metric-value">{{ view.human_review_items }}</div><div class="metric-note">Categories needing human review</div></div>
 </div>
-{% if view.provisional or view.human_review_items %}
+{% if view.human_review_items and view.human_review_completed %}
+<div class="notice"><strong>Human review completed.</strong> Human-review decisions were recorded before this final report was generated.</div>
+{% elif view.provisional or view.human_review_items %}
 <div class="notice"><strong>Human review required.</strong> This report is provisional and requires human review before decisions are made. Review-required category count: {{ view.human_review_items }}.</div>
 {% endif %}
 <h2>Executive Summary</h2>
@@ -521,6 +547,10 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 {% endfor %}
 </div>
 <h2>Human Review Notes</h2><ul>{% for item in view.human_review_notes %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<h2>Human Review Decisions</h2>
+<table><thead><tr><th>Category</th><th>Image</th><th>Status</th><th>Reviewer notes</th></tr></thead><tbody>
+{% for row in view.human_review_decision_rows %}<tr><td>{{ row.category }}</td><td>{{ row.image_id }}</td><td>{{ row.status }}</td><td>{{ row.notes or "No reviewer notes." }}</td></tr>{% else %}<tr><td colspan="4">None recorded.</td></tr>{% endfor %}
+</tbody></table>
 <h2 class="page-break">Section-wise Findings</h2>
 {% for section in view.category_sections %}
 <section class="section-card">
@@ -726,16 +756,9 @@ def render_report_pdf_with_reportlab(
                         Paragraph(str(view["total_images"]), styles["CoverMetricValue"]),
                     ],
                 ],
-                [
-                    [
-                        Paragraph("REVIEW ITEMS", styles["CoverMetricLabel"]),
-                        Paragraph(str(view["human_review_items"]), styles["CoverMetricValue"]),
-                    ],
-                    "",
-                ],
             ],
             colWidths=[62 * mm, 62 * mm],
-            rowHeights=[20 * mm, 20 * mm],
+            rowHeights=[20 * mm],
             hAlign="LEFT",
             style=[
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#4a4729")),
@@ -782,11 +805,17 @@ def render_report_pdf_with_reportlab(
                 f"Deterministic status floor: {reportlab_text(metadata['deterministic_status_floor'])}",
                 styles["BodyText"],
             ),
-            Paragraph(f"Human review items: {view['human_review_items']}", styles["BodyText"]),
         ]
     )
 
-    if content.provisional or view["human_review_items"]:
+    if view["human_review_items"] and view["human_review_completed"]:
+        story.append(
+            Paragraph(
+                "Human review was completed before this final report was generated.",
+                styles["BodyText"],
+            )
+        )
+    elif content.provisional or view["human_review_items"]:
         story.append(
             Paragraph(
                 "Human review required. This report is provisional and requires human review before decisions are made.",
@@ -886,6 +915,17 @@ def render_report_pdf_with_reportlab(
     ]:
         story.append(Paragraph(heading, styles["Heading2"]))
         story.extend(reportlab_bullet_list(items, styles))
+
+    story.append(Paragraph("Human Review Decisions", styles["Heading2"]))
+    story.extend(
+        reportlab_bullet_list(
+            [
+                f"{row['category']} / {row['image_id']}: {row['status']} - {row['notes'] or 'No reviewer notes.'}"
+                for row in view["human_review_decision_rows"]
+            ],
+            styles,
+        )
+    )
 
     story.append(Paragraph("Category-by-Category Findings", styles["Heading2"]))
     for section in content.category_sections:

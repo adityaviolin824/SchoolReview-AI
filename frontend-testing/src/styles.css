@@ -244,6 +244,19 @@ label {
   font-weight: 800;
 }
 
+.secondary-action {
+  width: 100%;
+  margin-top: 10px;
+  border-color: rgba(66, 211, 146, 0.56);
+  background: rgba(66, 211, 146, 0.12);
+  color: #bff6da;
+  font-weight: 800;
+}
+
+.action-hint {
+  margin: 10px 0 0;
+}
+
 .category-toolbar,
 .upload-summary,
 .upload-card-header {
@@ -302,6 +315,13 @@ label {
 
 .upload-card-header {
   margin-bottom: 12px;
+}
+
+.inline-warning {
+  margin: -4px 0 12px;
+  color: var(--warning);
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .upload-card-header h3 {
@@ -466,6 +486,23 @@ label {
 .artifact-list {
   display: grid;
   gap: 10px;
+}
+
+.review-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.review-progress span {
+  border: 1px solid rgba(37, 50, 71, 0.78);
+  border-radius: 999px;
+  background: rgba(12, 19, 32, 0.55);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 6px 10px;
 }
 
 .review-detail-card {

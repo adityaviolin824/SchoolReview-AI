@@ -134,11 +134,13 @@ def test_enterprise_report_renderers_include_risks_scope_and_actions(tmp_path: P
     assert "Section-wise Findings" in markdown_text
     assert "Overall status" not in markdown_text
     assert "Categories processed" not in markdown_text
+    assert "Human review items" not in markdown_text
     assert "Generated at" not in markdown_text
     assert "Human review required" in html_text
     assert "Key Risks" in html_text
     assert "Overall status" not in html_text
     assert "Categories processed" not in html_text
+    assert "Review items" not in html_text
     assert "Generated at" not in html_text
     assert "Priority Actions" in html_text
     assert "Section-wise Findings" in html_text

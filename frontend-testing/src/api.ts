@@ -50,6 +50,14 @@ async function parseResponse<T>(response: Response): Promise<T> {
     const errorPayload = (await response.json()) as { detail?: unknown };
     if (typeof errorPayload.detail === "string") {
       detail = errorPayload.detail;
+    } else if (errorPayload.detail && typeof errorPayload.detail === "object") {
+      const structuredDetail = errorPayload.detail as { message?: unknown; sections?: unknown };
+      if (typeof structuredDetail.message === "string") {
+        const sections = Array.isArray(structuredDetail.sections)
+          ? ` Missing: ${structuredDetail.sections.join(", ")}.`
+          : "";
+        detail = `${structuredDetail.message}${sections}`;
+      }
     }
   } catch {
     // Keep the generic status message.
@@ -99,6 +107,13 @@ export async function startRun(apiUrl: string, runId: string, payload: StartRunP
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+  return parseResponse<{ run_id: string; status: ApiRunStatus }>(response);
+}
+
+export async function finalizeReport(apiUrl: string, runId: string): Promise<{ run_id: string; status: ApiRunStatus }> {
+  const response = await fetch(`${normalizeApiUrl(apiUrl)}/inspection-runs/${encodeURIComponent(runId)}/finalize-report`, {
+    method: "POST",
   });
   return parseResponse<{ run_id: string; status: ApiRunStatus }>(response);
 }

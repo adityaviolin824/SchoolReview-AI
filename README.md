@@ -1,114 +1,109 @@
 # SchoolReview AI
 
-SchoolReview AI is an early-stage AI systems project for validating school inspection evidence. It compares school inspection images with officer comments, keeps the analysis grounded in visible evidence, and produces structured outputs that can be reviewed by a human.
+SchoolReview AI is a local-first prototype for reviewing school inspection evidence. It compares inspection images with officer comments, keeps findings grounded in visible evidence, and produces structured outputs for human review before a final report is generated.
 
-The project is intentionally cautious. It is not a safety certification system and does not certify compliance, structural soundness, electrical safety, or serviceability. Its purpose is to organize visual evidence, flag inconsistencies, and produce review-ready inspection artifacts.
+The output is limited to visible evidence. It does not certify safety, compliance, structural soundness, electrical safety, or serviceability. The goal is to organize evidence, surface mismatches, preserve an audit trail, and make review easier.
 
-This repository is built as a portfolio project around practical AI engineering: multimodal model orchestration, deterministic validation, privacy-aware preprocessing, structured outputs, report generation, and a minimal API layer.
+The implementation currently combines:
 
-## What It Does
-
-The backend currently supports a local-first school inspection workflow:
-
-- reads school inspection images and comments by category,
-- creates privacy-processed image copies before model calls,
-- uses a LangGraph image workflow for model routing,
-- calls Gemini as the primary vision model,
-- uses OpenAI as backup and independent review when needed,
-- compares officer comments with visible image evidence,
-- preserves full image-level audit JSON,
-- creates compact category summaries,
-- computes deterministic school-level rollups,
-- validates final LLM verdicts against deterministic status floors,
-- generates report-ready content,
-- renders Markdown, HTML, JSON, and PDF report artifacts,
-- exposes a minimal FastAPI layer for staged inspection runs,
-- includes tests for the deterministic and API-facing parts of the backend.
-
-The core design principle is:
-
-```text
-LLMs interpret visible evidence. Deterministic code validates, counts, routes, and renders.
-```
-
-## Why This Project
-
-Field inspection data is often inconsistent: photos may be scattered, comments may be incomplete, and final summaries can take manual effort. This project explores how AI can help structure that workflow without pretending to replace qualified inspection review.
-
-The engineering focus is on:
-
-- reliable AI workflow orchestration,
-- multi-provider fallback behavior,
-- schema-driven model outputs,
-- deterministic safety guardrails,
-- human-review routing,
-- report artifact validation,
-- API boundary design for uploaded inspection evidence.
+- privacy-aware image preprocessing before model calls,
+- an image-level LangGraph workflow with primary, backup, and secondary model-review paths,
+- structured model outputs validated by deterministic code,
+- category-level summaries instead of sending large raw audits into final prompts,
+- human-review gating before final report generation,
+- deterministic report rendering and artifact validation,
+- a small FastAPI and React interface for local testing.
 
 ## Current Status
 
-This is a working prototype, not a production inspection product.
+This is a working MVP for local testing and technical review, not a production inspection system.
 
 Implemented:
 
-- modular Python backend,
-- Pydantic schemas for inputs and outputs,
-- OpenCV-based privacy preprocessing,
-- LangGraph image assessment workflow,
-- Gemini primary vision assessment,
-- OpenAI backup and review assessment,
-- compact category-level summaries,
-- final aggregation with deterministic status-floor validation,
-- report-content generation,
-- deterministic Markdown, HTML, JSON, and PDF rendering,
-- ReportLab fallback when WeasyPrint is unavailable,
-- rendered report validation,
-- minimal FastAPI app for creating runs, uploading images, starting processing, checking status, recording human-review decisions, and downloading artifacts,
-- pytest tests for key deterministic logic and API routes.
+- Python backend package under `backend/school_safety_validator/`
+- local sample dataset under `backend/sample_data/`
+- image privacy preprocessing
+- Gemini primary vision assessment
+- OpenAI backup and secondary model-review paths
+- compact category summaries
+- deterministic school-level rollups
+- final aggregation and report-content LLM calls
+- Markdown, HTML, JSON, and PDF report artifacts
+- ReportLab PDF rendering by default, with optional WeasyPrint support
+- FastAPI endpoints for creating runs, uploading images, starting assessment, recording human review, finalizing reports, and downloading artifacts
+- simple React + Vite frontend under `frontend/`
+- tests for deterministic logic, report rendering, and API behavior
 
-Still early-stage:
+Known limits:
 
-- API run state is in memory, so it is suitable for local testing, not production persistence.
+- API run state is in memory. Restarting the backend loses the active run list.
+- Generated files are local filesystem artifacts.
 - Live model runs require provider API keys.
 - The sample dataset is synthetic and intended for development.
-- The project does not make final safety, compliance, or serviceability decisions.
+- The frontend is intentionally simple and optimized for local testing.
 
-## Safety And Scope Disclaimer
-
-This project must not be used as a safety certification tool.
-
-Required report disclaimer:
-
-```text
-This AI-assisted visual inspection summary does not certify safety, compliance, structural soundness, electrical safety, or serviceability. It must be reviewed by qualified personnel before decisions are made.
-```
-
-The system only uses visible image evidence for visual findings. It does not infer hidden causes, live electrical status, structural soundness, smells, water quality, or off-image conditions.
-
-## Architecture Overview
+## System Flow
 
 ```mermaid
 flowchart TD
-    A["Inspection images and comments"] --> B["Privacy preprocessing"]
-    B --> C["Gemini primary VLM"]
-    C --> D{"Assessment usable?"}
-    D -- "No" --> E["OpenAI backup model"]
-    D -- "Yes" --> F{"Needs review?"}
-    E --> F
-    F -- "Yes" --> G["OpenAI independent review"]
-    F -- "No" --> H["Finalize image result"]
-    G --> H
-    H --> I["Full image audit JSON"]
-    H --> Q{"Human review required?"}
-    Q -- "Yes" --> R["Human-review queue"]
-    Q -- "No" --> J["Compact category summary"]
-    R --> J
-    J --> K["Deterministic global rollup"]
-    K --> L["Final aggregation LLM"]
-    L --> M["Validated final verdict"]
-    M --> N["Report-content LLM"]
-    N --> O["Markdown, HTML, JSON, PDF"]
-    O --> P["Artifact validation"]
+    User["Select sections<br/>and upload images"] --> API["FastAPI run"]
+    API --> Validate["Validate inputs"]
+    Validate --> Ready{"Images for<br/>all sections?"}
+    Ready -- "No" --> InputStatus["Show missing<br/>sections"]
+    Ready -- "Yes" --> Start["Start assessment"]
+
+    Start --> Prepare["Prepare images"]
+    Prepare --> Privacy["Privacy<br/>preprocessing"]
+    Privacy --> Primary["Gemini<br/>primary VLM"]
+    Primary --> PrimaryUsable{"Usable<br/>result?"}
+    PrimaryUsable -- "No" --> Backup["OpenAI<br/>backup VLM"]
+    PrimaryUsable -- "Yes" --> ReviewCheck{"Secondary model<br/>review needed?"}
+    Backup --> ReviewCheck
+    ReviewCheck -- "Yes" --> ReviewModel["Secondary model review<br/>OpenAI gpt-4.1-mini"]
+    ReviewCheck -- "No" --> Outputs["Assessment<br/>outputs"]
+    ReviewModel --> Outputs
+
+    Outputs --> Queue{"Human review<br/>required?"}
+    Queue -- "Yes" --> HumanReview["Human review<br/>in UI"]
+    Queue -- "No" --> ReadyReport["Ready for final report"]
+    HumanReview --> Gate{"All items<br/>reviewed?"}
+    Gate -- "No" --> HumanReview
+    Gate -- "Yes" --> ReadyReport
+
+    ReadyReport --> FinalizeReport["Finalize report"]
+    FinalizeReport --> Rollup["Deterministic<br/>rollup"]
+    Rollup --> Aggregation["Final aggregation<br/>LLM"]
+    Aggregation --> ReportContent["Report-content LLM<br/>gpt-4.1-mini"]
+    ReportContent --> Artifacts["Final report<br/>artifacts"]
+```
+
+## API And Frontend Flow
+
+```mermaid
+sequenceDiagram
+    participant UI as Frontend
+    participant API as Backend API
+    participant Pipeline as Pipeline
+    participant Reviewer as Human Reviewer
+    participant Report as Report Layer
+
+    UI->>API: Create run
+    UI->>API: Upload section images
+    UI->>API: Start assessment
+    API->>Pipeline: Run image and category checks
+    Pipeline-->>API: Summaries and review queue
+    API-->>UI: Status updates
+
+    opt Human review needed
+        API-->>UI: Review image and model summary
+        Reviewer->>UI: Add review comment
+        UI->>API: Save review decision
+    end
+
+    UI->>API: Generate final report
+    API->>Report: Run final report flow
+    Report-->>API: Report artifacts
+    API-->>UI: Artifact links
 ```
 
 ## Repository Layout
@@ -117,46 +112,40 @@ flowchart TD
 .
   README.md
   AGENTS.md
-  docs/
-    progress_notes/
   backend/
+    README.md
     pyproject.toml
     uv.lock
-    README.md
     .env.example
-    backend-final-code-review.md
+    sample_data/
     reference_notebook/
+    utility_files/
     school_safety_validator/
       api/
-        fastapi_application.py
-        inspection_api_routes.py
-        inspection_api_models.py
-      inspection_data_models.py
-      inspection_runtime_settings.py
-      inspection_file_paths.py
-      image_privacy_preprocessing.py
-      inspection_prompt_templates.py
-      vision_model_provider_clients.py
-      structured_model_response_parsing.py
-      deterministic_assessment_rules.py
+      pipeline.py
       image_assessment_workflow_graph.py
       single_category_inspection_runner.py
       all_categories_inspection_runner.py
-      inspection_output_storage.py
       final_verdict_aggregation.py
       final_report_content_generation.py
       final_report_artifact_rendering.py
       final_report_artifact_validation.py
-      pipeline.py
-      logging_config.py
     scripts/
-      run_pipeline_from_json.py
     tests/
-    sample_data/
-    utility_files/
-    utils/
   frontend/
+    package.json
+    src/
+      App.tsx
+      api.ts
+      types.ts
+      styles.css
+  docs/
+    progress_notes/
+  runs/
+    api_runs/
 ```
+
+`runs/` is generated locally and ignored by git.
 
 ## Inspection Categories
 
@@ -172,11 +161,11 @@ The current school prototype supports:
 - `washroom`
 - `other`
 
-Each category has a focused prompt. For example, electrical images focus on visible wiring, panels, exposed parts, blocked access, rust, broken covers, burn marks, and physical damage. Washroom images focus on visible cleanliness issues, staining, waste, damaged fixtures, wet floors, dampness, standing water, and leakage.
+Each category has a focused prompt. The prompts are designed to stay within visible image evidence and avoid unsupported claims.
 
-## Models
+## Model Settings
 
-Default model settings are defined in `backend/school_safety_validator/inspection_runtime_settings.py`.
+Default model names are defined in `backend/school_safety_validator/inspection_runtime_settings.py`.
 
 ```text
 PRIMARY_VLM_MODEL = "gemini-3.1-flash-lite"
@@ -186,17 +175,22 @@ FINAL_AGGREGATION_MODEL = "gpt-4.1-mini"
 FINAL_REPORT_MODEL = "gpt-4.1-mini"
 ```
 
-The model choices are cost-conscious and are paired with deterministic validation. The workflow treats model output as structured evidence interpretation, not as final authority.
+The model outputs are treated as structured evidence interpretation. Deterministic code owns validation, counts, status floors, routing decisions, and report rendering.
 
 ## Setup
 
-This backend uses `uv`.
-
-From the repository root:
+Backend:
 
 ```bash
 cd backend
 uv sync
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
 ```
 
 Required for live model calls:
@@ -209,42 +203,48 @@ OPENAI_API_KEY
 Optional:
 
 ```text
+LANGSMITH_API_KEY
 LANGSMITH_PROJECT
 LANGSMITH_TRACING
 ```
 
-You can set these in your shell or a local `backend/.env` file. Do not commit real secrets.
+Use environment variables or a local `backend/.env` file. Do not commit real secrets.
 
-## Run Tests
-
-From `backend/`:
-
-```bash
-uv run pytest
-```
-
-Normal tests should use mocked clients and should not require live model calls.
-
-## Run The FastAPI App
+## Run The Backend API
 
 From `backend/`:
 
 ```bash
-uv run uvicorn school_safety_validator.api.fastapi_application:app --reload
+uv run uvicorn school_safety_validator.api.fastapi_application:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The minimal API currently supports:
+Swagger UI:
 
-- `GET /health`
-- `POST /inspection-runs`
-- `POST /inspection-runs/{run_id}/sections/{section_name}/images`
-- `POST /inspection-runs/{run_id}/start`
-- `GET /inspection-runs/{run_id}`
-- `GET /inspection-runs/{run_id}/human-review`
-- `POST /inspection-runs/{run_id}/human-review/{review_id}`
-- `GET /inspection-runs/{run_id}/artifacts/{artifact_name}`
+```text
+http://127.0.0.1:8000/docs
+```
 
-The API stages uploaded images into controlled run folders and returns sanitized status responses instead of exposing local filesystem paths directly.
+API-generated run files are written under:
+
+```text
+runs/api_runs/<run_id>/
+```
+
+## Run The Frontend
+
+From `frontend/`:
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+The frontend stores only the API URL and last run ID in local storage. It does not store uploaded image files or secrets.
 
 ## Run From JSON
 
@@ -253,116 +253,44 @@ From `backend/`:
 ```bash
 uv run python scripts/run_pipeline_from_json.py \
   --input sample_data/sample_pipeline_request.json \
-  --output school_validation_outputs/pipeline_result.json \
-  --output-root school_validation_outputs \
-  --no-tracing
+  --output school_validation_outputs/local_sample_result.json \
+  --output-root school_validation_outputs/local_runs \
+  --run-id local_sample
 ```
 
-Use `--skip-report` if you only want to run the image/category stages.
+To skip final report generation:
 
-## Local Input Format
+```bash
+uv run python scripts/run_pipeline_from_json.py \
+  --input sample_data/sample_pipeline_request.json \
+  --output school_validation_outputs/local_sample_result.json \
+  --output-root school_validation_outputs/local_runs \
+  --run-id local_sample \
+  --skip-report
+```
 
-The lower-level local runners expect category folders like this:
+## Tests
+
+Backend:
+
+```bash
+cd backend
+uv run pytest -q
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Safety And Scope
+
+The required report disclaimer is:
 
 ```text
-backend/sample_data/school/
-  category_name/
-    images/
-      image_1.jpg
-      image_2.jpg
-    comments/
-      image_1.txt
-      image_2.txt
-      overall_comments.txt
+This AI-assisted visual inspection summary does not certify safety, compliance, structural soundness, electrical safety, or serviceability. It must be reviewed by qualified personnel before decisions are made.
 ```
 
-Supported image extensions:
-
-```text
-.jpg
-.jpeg
-.png
-```
-
-## Generated Outputs
-
-Generated outputs are written outside the source dataset. API runs use run-scoped output folders under:
-
-```text
-backend/school_validation_outputs/api_runs/
-```
-
-Typical artifacts include:
-
-- privacy-processed images,
-- full image-level audit JSON,
-- compact category summaries,
-- all-category run summary,
-- final aggregation payload and outputs,
-- report-generation payload,
-- Markdown report,
-- HTML report,
-- PDF report.
-
-Generated outputs are intentionally ignored by Git.
-
-## Sample Data
-
-The local sample dataset is synthetic and was created for development/testing of this project. It is not an official school inspection dataset.
-
-Related dataset-generation workflow:
-
-[adityaviolin824/synthetic-vlm-dataset-workflow-codex](https://github.com/adityaviolin824/synthetic-vlm-dataset-workflow-codex)
-
-Using synthetic data makes the project easier to share publicly while still exercising realistic workflow cases: multiple categories, image-level comments, category comments, missing notes, review cases, and report generation.
-
-## Guardrails
-
-The project uses several practical guardrails:
-
-- source images are privacy-processed before model calls,
-- officer comments are treated as untrusted context,
-- visual findings are grounded in visible image evidence,
-- unsupported certification language is explicitly avoided,
-- low-confidence, unclear, contradictory, failed, or qualified-review cases are routed for human review,
-- deterministic code owns counting, status floors, schema validation, and artifact validation,
-- report content is validated before rendering,
-- generated PDF text is checked for required status/category/disclaimer content.
-
-## Current Limitations
-
-- This is an early-stage prototype.
-- The API run store is in memory.
-- The privacy preprocessing reduces risk but does not guarantee anonymization.
-- Live model behavior depends on provider availability and credentials.
-- Report generation may use ReportLab fallback if WeasyPrint is unavailable.
-- The output is review support material, not an inspection certification.
-
-## Why This Matters For AI Systems Work
-
-This project is less about a single model call and more about building the surrounding system responsibly:
-
-- controlled inputs,
-- privacy preprocessing,
-- model fallback paths,
-- structured response parsing,
-- deterministic validation,
-- failure-safe orchestration,
-- human-review queues,
-- report rendering,
-- API-safe response shaping,
-- testable components.
-
-Those are the parts that make AI features useful in real software systems.
-
-## Roadmap
-
-Near-term improvements:
-
-- replace in-memory API run state with durable storage,
-- add stronger run status tracking,
-- improve artifact metadata and download handling,
-- add more API tests around failure cases,
-- simplify or remove unused utility modules,
-- continue tightening report validation,
-- add a frontend after API contracts stabilize.
+The system uses visible image evidence for visual findings. It does not infer hidden causes, live electrical status, structural soundness, smells, water quality, or off-image conditions.

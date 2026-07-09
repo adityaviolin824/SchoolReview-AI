@@ -14,7 +14,16 @@ from school_safety_validator.inspection_data_models import (
 )
 
 
-ApiRunStatus = Literal["created", "running", "completed", "completed_with_human_review_required", "failed"]
+ApiRunStatus = Literal[
+    "created",
+    "running",
+    "awaiting_human_review",
+    "ready_for_report",
+    "finalizing_report",
+    "completed",
+    "completed_with_human_review_required",
+    "failed",
+]
 HumanReviewDecisionStatus = Literal["reviewed", "deferred"]
 
 
@@ -57,6 +66,13 @@ class StartInspectionRunRequest(BaseModel):
 
 class StartInspectionRunResponse(BaseModel):
     """Response returned when processing has been scheduled."""
+
+    run_id: str
+    status: ApiRunStatus
+
+
+class FinalizeInspectionReportResponse(BaseModel):
+    """Response returned when final report generation has been scheduled."""
 
     run_id: str
     status: ApiRunStatus
@@ -121,11 +137,36 @@ class CategorySummaryResponse(BaseModel):
     human_review_item_count: int = 0
 
 
+class SectionInputStatusResponse(BaseModel):
+    """Readiness for one selected input section before assessment starts."""
+
+    selected: bool = True
+    image_count: int = 0
+    ready: bool = False
+
+
+class InputStatusResponse(BaseModel):
+    """Input readiness summary for the selected run sections."""
+
+    can_start: bool = False
+    missing_image_sections: list[str] = Field(default_factory=list)
+    sections: dict[str, SectionInputStatusResponse] = Field(default_factory=dict)
+
+
+class RunProgressResponse(BaseModel):
+    """Small dashboard progress message for the current API phase."""
+
+    phase: ApiRunStatus
+    message: str
+
+
 class InspectionRunStatusResponse(BaseModel):
     """Sanitized run status returned to API clients."""
 
     run_id: str
     status: ApiRunStatus
+    input_status: InputStatusResponse = Field(default_factory=InputStatusResponse)
+    progress: RunProgressResponse | None = None
     pipeline_status: PipelineStatus | None = None
     overall_status: OverallInspectionStatus | None = None
     provisional: bool | None = None

@@ -44,8 +44,10 @@ codex_enterprise_pdf_report_prompt.md
 API-structure.md
 BACKEND-structure.md
 frontend-plan.md
+frontend-refinement-plan.md
 code-simplification-advice.md
 CURRENT_STATUS.md
+overall_app_review.md
 
 # FastAPI/runtime artifacts
 *.log

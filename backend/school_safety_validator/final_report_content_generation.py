@@ -47,10 +47,12 @@ def build_report_generation_payload(
             "Do not invent new evidence, defects, measurements, or certifications.",
             "Return content only; layout will be rendered by deterministic code.",
             "category_sections must contain exactly one entry for every processed category and no other categories.",
+            "Use human_review.decisions as reviewer context only; do not let free-text notes change deterministic counts, categories, or issue severity.",
             f"Use this exact disclaimer: {REPORT_DISCLAIMER}",
         ],
         "validated_final_verdict": final_report.model_dump(mode="json"),
         "global_rollup": global_rollup,
+        "human_review": global_rollup.get("human_review", {}),
         "source_files": source_files,
         "categories": category_packets,
     }
@@ -127,6 +129,9 @@ def build_report_metadata(
         "not_inspected_categories": global_rollup["not_inspected_categories"],
         "total_images": global_rollup["total_images"],
         "deterministic_status_floor": global_rollup["deterministic_status_floor"],
+        "human_review": global_rollup.get("human_review", {}),
+        "human_review_decisions": global_rollup.get("human_review_decisions", []),
+        "human_review_completed": global_rollup.get("human_review_completed", False),
     }
 
 

@@ -3,6 +3,7 @@ import {
   artifactUrl,
   checkHealth,
   createRun,
+  finalizeReport,
   getRunStatus,
   humanReviewImageUrl,
   normalizeApiUrl,
@@ -16,6 +17,8 @@ import type { ApiRunStatus, HumanReviewItem, RunStatusResponse, SectionName, Upl
 const API_URL_STORAGE_KEY = "school-validator-api-url";
 const LAST_RUN_ID_STORAGE_KEY = "school-validator-last-run-id";
 const DEFAULT_API_URL = "http://127.0.0.1:8000";
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_UPLOAD_EXTENSIONS = [".jpg", ".jpeg", ".png"];
 
 type BackendState = "unknown" | "online" | "offline";
 
@@ -67,6 +70,35 @@ function knownSectionNames(values: string[]): SectionName[] {
   return values.filter((value): value is SectionName => sectionNames.includes(value as SectionName));
 }
 
+function inputStatusForSections(sections: SectionName[]) {
+  return {
+    can_start: false,
+    missing_image_sections: sections,
+    sections: Object.fromEntries(
+      sections.map((name) => [name, { selected: true, image_count: 0, ready: false }]),
+    ),
+  };
+}
+
+function fileExtension(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+}
+
+function validateSelectedFiles(files: File[]): string | null {
+  const unsupportedFile = files.find((file) => !SUPPORTED_UPLOAD_EXTENSIONS.includes(fileExtension(file.name)));
+  if (unsupportedFile) {
+    return `${unsupportedFile.name} is not supported. Use JPG, JPEG, or PNG images.`;
+  }
+
+  const oversizedFile = files.find((file) => file.size > MAX_UPLOAD_BYTES);
+  if (oversizedFile) {
+    return `${oversizedFile.name} is larger than 10 MB.`;
+  }
+
+  return null;
+}
+
 function statusClass(status: string | null | undefined): string {
   if (!status) {
     return "badge";
@@ -74,10 +106,10 @@ function statusClass(status: string | null | undefined): string {
   if (status === "completed") {
     return "badge badge-success";
   }
-  if (status === "running" || status === "created") {
+  if (status === "running" || status === "created" || status === "ready_for_report" || status === "finalizing_report") {
     return "badge badge-info";
   }
-  if (status === "completed_with_human_review_required") {
+  if (status === "completed_with_human_review_required" || status === "awaiting_human_review") {
     return "badge badge-warning";
   }
   if (status === "failed") {
@@ -90,17 +122,31 @@ function pipelinePhase(runStatus: RunStatusResponse | null): string {
   if (!runStatus) {
     return "No run loaded";
   }
+  if (runStatus.progress?.message) {
+    return runStatus.progress.message;
+  }
   if (runStatus.status === "created") {
     return "Created, waiting for uploads or start";
   }
   if (runStatus.status === "running") {
-    return "Pipeline is running";
+    return "Assessment is running";
+  }
+  if (runStatus.status === "awaiting_human_review") {
+    return "Assessment complete. Human review required.";
+  }
+  if (runStatus.status === "ready_for_report") {
+    return runStatus.human_review_items.length
+      ? "Human review complete. Ready to generate final report."
+      : "Assessment complete. Ready to generate final report.";
+  }
+  if (runStatus.status === "finalizing_report") {
+    return "Final report is being generated.";
   }
   if (runStatus.status === "completed_with_human_review_required") {
     return "Completed, human review required";
   }
   if (runStatus.status === "completed") {
-    return "Completed";
+    return "Final report ready.";
   }
   if (runStatus.status === "failed") {
     return "Failed";
@@ -127,6 +173,14 @@ function reviewStatusClass(status: string): string {
   return "badge badge-warning";
 }
 
+function humanReviewCounts(items: HumanReviewItem[]): Record<"pending" | "reviewed" | "deferred", number> {
+  return {
+    pending: items.filter((item) => item.status === "pending").length,
+    reviewed: items.filter((item) => item.status === "reviewed").length,
+    deferred: items.filter((item) => item.status === "deferred").length,
+  };
+}
+
 export default function App() {
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem(API_URL_STORAGE_KEY) || DEFAULT_API_URL);
   const [backendState, setBackendState] = useState<BackendState>("unknown");
@@ -142,7 +196,6 @@ export default function App() {
   const [runSections, setRunSections] = useState<SectionName[]>([]);
   const [runStatus, setRunStatus] = useState<RunStatusResponse | null>(null);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
-  const [generateReport, setGenerateReport] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const normalizedApiUrl = useMemo(() => normalizeApiUrl(apiUrl), [apiUrl]);
@@ -157,9 +210,17 @@ export default function App() {
   );
   const currentStatus = runStatus?.status;
   const canUpload = Boolean(runId) && (!currentStatus || currentStatus === "created");
-  const canStart = Boolean(runId) && (!currentStatus || currentStatus === "created");
+  const canStart = Boolean(runId) && (!currentStatus || currentStatus === "created") && Boolean(runStatus?.input_status.can_start);
+  const reviewCounts = useMemo(
+    () => humanReviewCounts(runStatus?.human_review_items ?? []),
+    [runStatus?.human_review_items],
+  );
+  const allReviewItemsReviewed = Boolean(
+    runStatus && runStatus.human_review_items.every((item) => item.status === "reviewed"),
+  );
+  const canFinalizeReport = Boolean(runId && runStatus?.status === "ready_for_report" && allReviewItemsReviewed);
   const totalUploadedImages = sectionNames.reduce(
-    (total, name) => total + sectionForms[name].uploadedImages.length,
+    (total, name) => total + (runStatus?.input_status.sections[name]?.image_count ?? sectionForms[name].uploadedImages.length),
     0,
   );
 
@@ -226,7 +287,14 @@ export default function App() {
   }, [normalizedApiUrl, runId]);
 
   useEffect(() => {
-    if (runStatus?.status !== "running") {
+    if (!runId || runStatus || runId.length < 8) {
+      return;
+    }
+    void refreshStatus();
+  }, [refreshStatus, runId, runStatus]);
+
+  useEffect(() => {
+    if (runStatus?.status !== "running" && runStatus?.status !== "finalizing_report") {
       return undefined;
     }
     const timer = window.setInterval(() => {
@@ -278,6 +346,11 @@ export default function App() {
       setRunStatus({
         run_id: response.run_id,
         status: response.status,
+        input_status: inputStatusForSections(createdSections),
+        progress: {
+          phase: response.status,
+          message: `Upload at least one image for: ${createdSections.join(", ")}.`,
+        },
         pipeline_status: null,
         overall_status: null,
         provisional: null,
@@ -321,6 +394,11 @@ export default function App() {
       setError(`${formatSectionName(sectionName)} is not part of this run.`);
       return;
     }
+    const fileValidationError = validateSelectedFiles(sectionForm.selectedFiles);
+    if (fileValidationError) {
+      setError(fileValidationError);
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -354,10 +432,25 @@ export default function App() {
     setError("");
     try {
       await startRun(normalizedApiUrl, runId, {
-        generate_report: generateReport,
+        generate_report: false,
       });
       setRunStatus((current) => (current ? { ...current, status: "running" } : current));
-      setMessage("Pipeline started. Status will refresh every 3 seconds.");
+      setMessage("Assessment started. Status will refresh every 3 seconds.");
+      await refreshStatus();
+    } catch (caughtError) {
+      showError(caughtError);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleFinalizeReport = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await finalizeReport(normalizedApiUrl, runId);
+      setRunStatus((current) => (current ? { ...current, status: "finalizing_report" } : current));
+      setMessage("Final report generation started. Status will refresh every 3 seconds.");
       await refreshStatus();
     } catch (caughtError) {
       showError(caughtError);
@@ -485,13 +578,19 @@ export default function App() {
               <div className="section-upload-list">
                 {uploadSectionNames.map((name) => {
                   const sectionForm = sectionForms[name];
+                  const backendSectionStatus = runStatus?.input_status.sections[name];
+                  const uploadedCount = backendSectionStatus?.image_count ?? sectionForm.uploadedImages.length;
+                  const needsImage = canUpload && backendSectionStatus ? !backendSectionStatus.ready : false;
                   const uploadDisabled = !canUpload || busy || (runSections.length > 0 && !runSections.includes(name));
                   return (
                     <article key={name} className="upload-card">
                       <div className="upload-card-header">
                         <h3>{formatSectionName(name)}</h3>
-                        <span className="badge">{sectionForm.uploadedImages.length} uploaded</span>
+                        <span className="badge">{uploadedCount} uploaded</span>
                       </div>
+                      {needsImage && (
+                        <p className="inline-warning">Needs at least one image before assessment can start.</p>
+                      )}
                       <label>
                         Image comment
                         <input
@@ -529,6 +628,8 @@ export default function App() {
                           sectionForm.uploadedImages.map((image) => (
                             <p key={image.image_id}>{image.original_filename}</p>
                           ))
+                        ) : uploadedCount > 0 ? (
+                          <p>{uploadedCount} image{uploadedCount === 1 ? "" : "s"} uploaded for this section.</p>
                         ) : (
                           <p className="muted">No images uploaded yet.</p>
                         )}
@@ -558,19 +659,35 @@ export default function App() {
                 Refresh
               </button>
             </div>
-            <div className="checkbox-row">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={generateReport}
-                  onChange={(event) => setGenerateReport(event.target.checked)}
-                />
-                Generate report
-              </label>
-            </div>
             <button type="button" className="primary-action" onClick={handleStart} disabled={!canStart || busy}>
-              Start pipeline
+              Start assessment
             </button>
+            {runStatus?.status === "created" && runStatus.input_status.missing_image_sections.length > 0 && (
+              <p className="muted action-hint">
+                Missing images: {runStatus.input_status.missing_image_sections.map(formatSectionName).join(", ")}.
+              </p>
+            )}
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={handleFinalizeReport}
+              disabled={!canFinalizeReport || busy}
+            >
+              Generate final report
+            </button>
+            {runStatus?.status === "awaiting_human_review" && (
+              <p className="muted action-hint">Review every flagged item before generating the final report.</p>
+            )}
+            {runStatus?.status === "ready_for_report" && (
+              <p className="muted action-hint">
+                {runStatus.human_review_items.length
+                  ? "Human review is complete. You can generate the final report now."
+                  : "No human review is required. You can generate the final report now."}
+              </p>
+            )}
+            {runStatus?.status === "finalizing_report" && (
+              <p className="muted action-hint">Final report generation is running.</p>
+            )}
           </section>
 
           <section className="panel">
@@ -608,6 +725,7 @@ export default function App() {
                   <ListBlock title="Processed" items={runStatus.processed_sections} />
                   <ListBlock title="Failed" items={runStatus.failed_sections} />
                   <ListBlock title="Not inspected" items={runStatus.not_inspected_sections} />
+                  <ListBlock title="Missing images" items={runStatus.input_status.missing_image_sections.map(formatSectionName)} />
                 </div>
                 {!!categorySummaryEntries.length && (
                   <div className="category-summary-list">
@@ -649,6 +767,13 @@ export default function App() {
               <span>5</span>
               <h2>Human review</h2>
             </div>
+            {runStatus?.human_review_items.length ? (
+              <div className="review-progress">
+                <span>Reviewed: {reviewCounts.reviewed}</span>
+                <span>Pending: {reviewCounts.pending}</span>
+                <span>Deferred: {reviewCounts.deferred}</span>
+              </div>
+            ) : null}
             {runStatus?.human_review_items.length ? (
               <div className="review-workspace">
                 {runStatus.human_review_items.map((item) => (
@@ -774,7 +899,7 @@ export default function App() {
                 ))}
               </div>
             ) : (
-              <p className="muted">Artifacts appear here after report generation completes.</p>
+              <p className="muted">Report has not been generated yet. Complete review and click Generate final report.</p>
             )}
           </section>
         </div>

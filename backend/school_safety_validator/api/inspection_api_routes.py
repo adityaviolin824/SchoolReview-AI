@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import io
 import shutil
 import threading
@@ -25,20 +26,26 @@ from school_safety_validator.inspection_data_models import (
 from school_safety_validator.inspection_file_paths import SUPPORTED_IMAGE_EXTENSIONS
 from school_safety_validator.inspection_runtime_settings import BACKEND_ROOT, CATEGORY_NAMES
 from school_safety_validator.logging_config import logging
-from school_safety_validator.pipeline import run_school_safety_pipeline
+from school_safety_validator.pipeline import build_artifact_paths, run_school_safety_pipeline
+from school_safety_validator.final_report_content_generation import run_final_report_generation
+from school_safety_validator.inspection_runtime_settings import get_settings
 
 from .inspection_api_models import (
     ApiRunStatus,
     CategorySummaryResponse,
+    FinalizeInspectionReportResponse,
     HealthResponse,
     HumanReviewApiItem,
     HumanReviewDecisionRequest,
     HumanReviewDecisionResponse,
     HumanReviewFindingSummary,
     HumanReviewModelSummary,
+    InputStatusResponse,
     InspectionRunCreateRequest,
     InspectionRunCreateResponse,
     InspectionRunStatusResponse,
+    RunProgressResponse,
+    SectionInputStatusResponse,
     StartInspectionRunRequest,
     StartInspectionRunResponse,
     UploadedImageResponse,
@@ -143,6 +150,65 @@ def upload_root(run_id: str, section_name: str) -> Path:
     return run_root(run_id) / "uploads" / section_name
 
 
+def selected_section_names(record: InspectionRunRecord) -> list[str]:
+    """Return section names selected for this API run."""
+
+    return [section.section_name for section in record.request.sections]
+
+
+def build_input_status(record: InspectionRunRecord) -> InputStatusResponse:
+    """Return upload readiness for the selected run sections."""
+
+    sections = {}
+    missing_sections = []
+    for section_name in selected_section_names(record):
+        image_count = len(record.staged_images.get(section_name, []))
+        ready = image_count > 0
+        if not ready:
+            missing_sections.append(section_name)
+        sections[section_name] = SectionInputStatusResponse(
+            selected=True,
+            image_count=image_count,
+            ready=ready,
+        )
+
+    return InputStatusResponse(
+        can_start=record.status == "created" and not missing_sections,
+        missing_image_sections=missing_sections,
+        sections=sections,
+    )
+
+
+def build_progress_response(record: InspectionRunRecord, input_status: InputStatusResponse) -> RunProgressResponse:
+    """Return a concise dashboard message for the current run phase."""
+
+    if record.status == "created":
+        if input_status.missing_image_sections:
+            missing = ", ".join(input_status.missing_image_sections)
+            return RunProgressResponse(
+                phase=record.status,
+                message=f"Upload at least one image for: {missing}.",
+            )
+        return RunProgressResponse(phase=record.status, message="Inputs are ready. Start assessment when ready.")
+    if record.status == "running":
+        return RunProgressResponse(phase=record.status, message="Assessment is running.")
+    if record.status == "awaiting_human_review":
+        return RunProgressResponse(phase=record.status, message="Assessment complete. Human review required.")
+    if record.status == "ready_for_report":
+        if review_items_for_record(record):
+            message = "Human review complete. Ready to generate final report."
+        else:
+            message = "Assessment complete. Ready to generate final report."
+        return RunProgressResponse(phase=record.status, message=message)
+    if record.status == "finalizing_report":
+        return RunProgressResponse(phase=record.status, message="Final report is being generated.")
+    if record.status == "completed":
+        return RunProgressResponse(phase=record.status, message="Final report ready.")
+    if record.status == "failed":
+        return RunProgressResponse(phase=record.status, message="Run failed. Check errors.")
+    return RunProgressResponse(phase=record.status, message=record.status)
+
+
 def find_human_review_item(record: InspectionRunRecord, review_id: str) -> dict | None:
     """Return one raw human-review item for a run."""
 
@@ -169,6 +235,84 @@ def safe_human_review_image_path(record: InspectionRunRecord, item: dict) -> Pat
     if not image_path.is_file():
         return None
     return image_path
+
+
+def review_items_for_record(record: InspectionRunRecord) -> list[dict]:
+    """Return raw review items for a completed assessment."""
+
+    if record.result is None:
+        return []
+    return record.result.human_review_items
+
+
+def human_review_status_counts(record: InspectionRunRecord) -> dict[str, int]:
+    """Count current review states using saved decisions as the source of truth."""
+
+    counts = {"pending": 0, "reviewed": 0, "deferred": 0}
+    for item in review_items_for_record(record):
+        review_id = str(item.get("review_id", ""))
+        decision = record.human_review_decisions.get(review_id)
+        item_status = decision.status if decision else str(item.get("status", "pending"))
+        if item_status not in counts:
+            item_status = "pending"
+        counts[item_status] += 1
+    return counts
+
+
+def all_human_review_items_reviewed(record: InspectionRunRecord) -> bool:
+    """Return true when every flagged item has a reviewed decision."""
+
+    review_items = review_items_for_record(record)
+    if not review_items:
+        return True
+    return all(
+        record.human_review_decisions.get(str(item.get("review_id", "")))
+        and record.human_review_decisions[str(item.get("review_id", ""))].status == "reviewed"
+        for item in review_items
+    )
+
+
+def status_after_assessment(record: InspectionRunRecord) -> ApiRunStatus:
+    """Map an assessment result to the API workflow status."""
+
+    if record.result is None:
+        return record.status
+    if record.result.pipeline_status == "failed" or record.result.errors:
+        return "failed"
+    if not review_items_for_record(record):
+        return "ready_for_report"
+    return "ready_for_report" if all_human_review_items_reviewed(record) else "awaiting_human_review"
+
+
+def human_review_decision_records(record: InspectionRunRecord) -> list[dict]:
+    """Return exact review decisions with category/image context for final payloads."""
+
+    decisions = []
+    for item in review_items_for_record(record):
+        review_id = str(item.get("review_id", ""))
+        decision = record.human_review_decisions.get(review_id)
+        if decision is None:
+            continue
+        decisions.append(
+            {
+                "review_id": review_id,
+                "category_name": str(item.get("category_name", "")),
+                "image_id": str(item.get("image_id", "")),
+                "status": decision.status,
+                "notes": decision.notes,
+            }
+        )
+    return decisions
+
+
+def run_summary_with_human_review(record: InspectionRunRecord) -> dict:
+    """Copy the assessment run summary and attach human-review decisions."""
+
+    if record.result is None:
+        return {}
+    run_summary = copy.deepcopy(record.result.run_summary)
+    run_summary["human_review_decisions"] = human_review_decision_records(record)
+    return run_summary
 
 
 def build_human_review_model_summary(item: dict) -> HumanReviewModelSummary:
@@ -265,6 +409,8 @@ def downloadable_artifact_names(result: SchoolInspectionResult, run_id: str) -> 
     resolved_run_root = run_root(run_id).resolve()
     artifact_names = []
     for artifact_name, artifact_path in result.artifact_paths.items():
+        if not artifact_name.startswith("final_report:"):
+            continue
         resolved_path = Path(artifact_path).resolve()
         if resolved_path.is_relative_to(resolved_run_root) and resolved_path.is_file():
             artifact_names.append(artifact_name)
@@ -274,17 +420,23 @@ def downloadable_artifact_names(result: SchoolInspectionResult, run_id: str) -> 
 def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusResponse:
     """Build the public status response for a run."""
 
+    input_status = build_input_status(record)
+    progress = build_progress_response(record, input_status)
     result = record.result
     if result is None:
         return InspectionRunStatusResponse(
             run_id=record.run_id,
             status=record.status,
+            input_status=input_status,
+            progress=progress,
             errors=sanitized_errors(record),
         )
 
     return InspectionRunStatusResponse(
         run_id=record.run_id,
         status=record.status,
+        input_status=input_status,
+        progress=progress,
         pipeline_status=result.pipeline_status,
         overall_status=result.overall_status,
         provisional=result.provisional,
@@ -319,7 +471,7 @@ def validate_uploaded_image(filename: str | None, content_type: str | None, data
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded image is empty.")
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Uploaded image is larger than 10 MB.")
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Uploaded image is larger than 10 MB.")
 
     try:
         with Image.open(io.BytesIO(data)) as image:
@@ -349,7 +501,49 @@ def build_pipeline_request(record: InspectionRunRecord) -> SchoolInspectionReque
     return SchoolInspectionRequest(school=record.request.school, sections=sections)
 
 
-def execute_pipeline_job(run_id: str, start_options: StartInspectionRunRequest) -> None:
+def final_report_options(run_id: str) -> PipelineExecutionOptions:
+    """Return normalized paths for finalizing an existing API run."""
+
+    return PipelineExecutionOptions(
+        output_root=run_root(run_id),
+        materialized_input_root=run_root(run_id) / "pipeline_inputs",
+        run_id=run_id,
+        generate_report=True,
+    )
+
+
+def build_finalized_result(record: InspectionRunRecord, report_result: dict) -> SchoolInspectionResult:
+    """Merge final aggregation/report artifacts into the existing assessment result."""
+
+    if record.result is None:
+        raise RuntimeError("Cannot finalize a run before assessment completes.")
+
+    aggregation = report_result["aggregation"]
+    final_report = aggregation["final_report"]
+    global_rollup = aggregation["global_rollup"]
+    run_summary = run_summary_with_human_review(record)
+    options = final_report_options(record.run_id)
+
+    return SchoolInspectionResult(
+        school=record.result.school,
+        pipeline_status="completed",
+        overall_status=final_report.overall_status,
+        provisional=final_report.provisional,
+        processed_sections=global_rollup.get("processed_categories", record.result.processed_sections),
+        failed_sections=global_rollup.get("failed_categories", record.result.failed_sections),
+        not_inspected_sections=global_rollup.get("not_inspected_categories", record.result.not_inspected_sections),
+        total_images=global_rollup.get("total_images", record.result.total_images),
+        human_review_required=bool(review_items_for_record(record)),
+        human_review_items=record.result.human_review_items,
+        category_summaries=record.result.category_summaries,
+        run_summary=run_summary,
+        artifact_paths=build_artifact_paths(options, run_summary, report_result),
+        warnings=record.result.warnings,
+        errors=[],
+    )
+
+
+def execute_pipeline_job(run_id: str) -> None:
     """Run the blocking pipeline in a FastAPI background task."""
 
     record = RUNS[run_id]
@@ -360,15 +554,35 @@ def execute_pipeline_job(run_id: str, start_options: StartInspectionRunRequest) 
                 PipelineExecutionOptions(
                     output_root=API_OUTPUT_ROOT,
                     run_id=run_id,
-                    generate_report=start_options.generate_report,
+                    generate_report=False,
                 ),
             )
         record.result = result
-        record.status = result.pipeline_status
+        record.status = status_after_assessment(record)
     except Exception:
         logger.exception("API inspection run %s failed unexpectedly.", run_id)
         record.status = "failed"
         record.errors = ["Pipeline failed. Check server logs for details."]
+
+
+def execute_final_report_job(run_id: str) -> None:
+    """Run final aggregation and report generation after human review."""
+
+    record = RUNS[run_id]
+    try:
+        with PIPELINE_LOCK:
+            options = final_report_options(run_id)
+            settings = get_settings(input_root=options.materialized_input_root, output_root=options.output_root)
+            report_result = run_final_report_generation(
+                settings=settings,
+                full_run_state=run_summary_with_human_review(record),
+            )
+        record.result = build_finalized_result(record, report_result)
+        record.status = "completed"
+    except Exception:
+        logger.exception("API report finalization for run %s failed unexpectedly.", run_id)
+        record.status = "failed"
+        record.errors = ["Final report generation failed. Check server logs for details."]
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -453,15 +667,56 @@ def start_inspection_run(
     payload: StartInspectionRunRequest,
     background_tasks: BackgroundTasks,
 ) -> StartInspectionRunResponse:
-    """Start background processing for a staged inspection run."""
+    """Start background image/category assessment for a staged inspection run."""
 
     record = get_run_record(run_id)
     if record.status != "created":
         raise HTTPException(status.HTTP_409_CONFLICT, "Inspection run has already been started.")
+    input_status = build_input_status(record)
+    if input_status.missing_image_sections:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": "missing_section_images",
+                "message": "Each selected section needs at least one image before assessment starts.",
+                "sections": input_status.missing_image_sections,
+            },
+        )
 
     record.status = "running"
-    background_tasks.add_task(execute_pipeline_job, run_id, payload)
+    background_tasks.add_task(execute_pipeline_job, run_id)
     return StartInspectionRunResponse(run_id=run_id, status=record.status)
+
+
+@router.post(
+    "/inspection-runs/{run_id}/finalize-report",
+    response_model=FinalizeInspectionReportResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def finalize_inspection_report(run_id: str, background_tasks: BackgroundTasks) -> FinalizeInspectionReportResponse:
+    """Generate final aggregation and report artifacts after review is complete."""
+
+    record = get_run_record(run_id)
+    if record.result is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Assessment must finish before final report generation.")
+    if record.status == "finalizing_report":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Final report generation is already running.")
+    if record.status in {"created", "running"}:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Assessment must finish before final report generation.")
+    if record.status == "failed":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Failed runs cannot generate a final report.")
+    if record.status == "completed":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Final report has already been generated.")
+    if not all_human_review_items_reviewed(record):
+        counts = human_review_status_counts(record)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"All human-review items must be reviewed before final report generation. Current counts: {counts}",
+        )
+
+    record.status = "finalizing_report"
+    background_tasks.add_task(execute_final_report_job, run_id)
+    return FinalizeInspectionReportResponse(run_id=run_id, status=record.status)
 
 
 @router.get("/inspection-runs/{run_id}", response_model=InspectionRunStatusResponse)
@@ -515,6 +770,8 @@ def record_human_review_decision(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Human-review item was not found for this run.")
 
     record.human_review_decisions[review_id] = payload
+    if record.status in {"awaiting_human_review", "ready_for_report"}:
+        record.status = status_after_assessment(record)
     return HumanReviewDecisionResponse(run_id=run_id, review_id=review_id, status=payload.status)
 
 
@@ -525,6 +782,8 @@ def download_artifact(run_id: str, artifact_name: str) -> FileResponse:
     record = get_run_record(run_id)
     if record.result is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Artifacts are not available until the run finishes.")
+    if not artifact_name.startswith("final_report:"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Artifact was not found for this run.")
     artifact_path = record.result.artifact_paths.get(artifact_name)
     if artifact_path is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artifact was not found for this run.")
