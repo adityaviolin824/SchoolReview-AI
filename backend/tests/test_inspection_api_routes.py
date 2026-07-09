@@ -111,6 +111,23 @@ def test_cors_allows_local_vite_frontend() -> None:
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
+def test_create_app_serves_bundled_frontend_without_hiding_api_routes(monkeypatch, tmp_path: Path) -> None:
+    frontend_dist_dir = tmp_path / "frontend"
+    frontend_dist_dir.mkdir()
+    (frontend_dist_dir / "index.html").write_text("<!doctype html><div id=\"root\"></div>", encoding="utf-8")
+    monkeypatch.setattr(fastapi_application, "FRONTEND_DIST_DIR", frontend_dist_dir)
+
+    client = TestClient(create_app())
+
+    frontend_response = client.get("/")
+    health_response = client.get("/health")
+
+    assert frontend_response.status_code == 200
+    assert 'id="root"' in frontend_response.text
+    assert health_response.status_code == 200
+    assert health_response.json() == {"status": "ok"}
+
+
 def test_start_blocks_selected_sections_without_images(monkeypatch, tmp_path: Path) -> None:
     inspection_api_routes.RUNS.clear()
     monkeypatch.setattr(inspection_api_routes, "API_OUTPUT_ROOT", tmp_path)

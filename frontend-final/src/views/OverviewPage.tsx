@@ -30,7 +30,7 @@ export function OverviewPage({ controller, onNavigate }: OverviewPageProps) {
       <section className="hero-panel">
         <div>
           <h2>School condition review.</h2>
-          <p>Upload inspection evidence, run the model assessment, review flagged items, and generate the report.</p>
+          <p>Upload inspection evidence, start model assessment, review flagged items, and generate the report.</p>
         </div>
         <div className="hero-actions">
           <button type="button" className="primary-action" onClick={() => onNavigate("new-inspection")}>
@@ -42,7 +42,7 @@ export function OverviewPage({ controller, onNavigate }: OverviewPageProps) {
         </div>
       </section>
 
-      <section className="surface current-run-panel">
+      <section className="surface current-inspection-panel">
         <div className="section-heading">
           <div>
             <h2>Current inspection</h2>

@@ -69,7 +69,7 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
         <div className="section-heading">
           <div>
             <h2>Categories</h2>
-            <p>{controller.selectedSectionNames.length} selected for this run.</p>
+            <p>{controller.selectedSectionNames.length} selected for this inspection.</p>
           </div>
           <button
             type="button"
@@ -121,8 +121,8 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
           <div className="upload-list">
             {uploadSectionNames.map((name: SectionName) => {
               const form = controller.sectionForms[name];
-              const backendStatus = runStatus?.input_status.sections[name];
-              const uploadedCount = backendStatus?.image_count ?? form.uploadedImages.length;
+              const sectionStatus = runStatus?.input_status.sections[name];
+              const uploadedCount = sectionStatus?.image_count ?? form.uploadedImages.length;
               const uploadDisabled =
                 !controller.canUpload || controller.busy || (controller.runSections.length > 0 && !controller.runSections.includes(name));
               return (

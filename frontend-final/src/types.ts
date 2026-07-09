@@ -129,7 +129,3 @@ export type RunStatusResponse = {
   warnings: string[];
   errors: string[];
 };
-
-export type HealthResponse = {
-  status: "ok";
-};

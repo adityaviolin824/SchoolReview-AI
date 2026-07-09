@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  checkHealth,
   createRun,
   finalizeReport,
   getRunStatus,
-  normalizeApiUrl,
   recordHumanReviewDecision,
   startRun,
   uploadImage,
 } from "../api";
 import {
-  API_URL_STORAGE_KEY,
   DEFAULT_API_URL,
   LAST_RUN_ID_STORAGE_KEY,
   MAX_UPLOAD_BYTES,
@@ -26,8 +23,6 @@ import type {
   SectionName,
   UploadedImageResponse,
 } from "../types";
-
-export type BackendState = "unknown" | "online" | "offline";
 
 export type SectionFormState = {
   selected: boolean;
@@ -103,8 +98,6 @@ function validateSelectedFiles(files: File[]): string | null {
 }
 
 export function useInspectionRun() {
-  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem(API_URL_STORAGE_KEY) || DEFAULT_API_URL);
-  const [backendState, setBackendState] = useState<BackendState>("unknown");
   const [message, setMessage] = useState("Ready.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -119,7 +112,7 @@ export function useInspectionRun() {
   const [runStatus, setRunStatus] = useState<RunStatusResponse | null>(null);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
-  const normalizedApiUrl = useMemo(() => normalizeApiUrl(apiUrl), [apiUrl]);
+  const normalizedApiUrl = DEFAULT_API_URL;
   const selectedSectionNames = useMemo(
     () => SECTION_NAMES.filter((name) => sectionForms[name].selected),
     [sectionForms],
@@ -142,10 +135,6 @@ export function useInspectionRun() {
   );
 
   useEffect(() => {
-    localStorage.setItem(API_URL_STORAGE_KEY, apiUrl);
-  }, [apiUrl]);
-
-  useEffect(() => {
     if (runId) {
       localStorage.setItem(LAST_RUN_ID_STORAGE_KEY, runId);
     }
@@ -165,32 +154,9 @@ export function useInspectionRun() {
     }));
   }, []);
 
-  const handleRunIdChange = useCallback((value: string) => {
-    setRunId(value.trim());
-    setRunSections([]);
-    setRunStatus(null);
-    setReviewNotes({});
-    setSectionForms(clearRuntimeUploads);
-  }, []);
-
-  const handleHealthCheck = useCallback(async () => {
-    setBusy(true);
-    setError("");
-    try {
-      await checkHealth(normalizedApiUrl);
-      setBackendState("online");
-      setMessage("Backend is online.");
-    } catch (caughtError) {
-      setBackendState("offline");
-      showError(caughtError);
-    } finally {
-      setBusy(false);
-    }
-  }, [normalizedApiUrl, showError]);
-
   const refreshStatus = useCallback(async () => {
     if (!runId) {
-      setError("Create or paste a run ID first.");
+      setError("Create an inspection first.");
       return;
     }
     setError("");
@@ -201,7 +167,7 @@ export function useInspectionRun() {
       if (sections.length) {
         setRunSections(sections);
       }
-      setMessage(`Run status: ${status.status}`);
+      setMessage(`Inspection status: ${status.status}`);
     } catch (caughtError) {
       showError(caughtError);
     }
@@ -297,7 +263,7 @@ export function useInspectionRun() {
         }
         return next;
       });
-      setMessage(`Run created for ${createdSections.map(formatSectionName).join(", ")}.`);
+      setMessage(`Inspection created for ${createdSections.map(formatSectionName).join(", ")}.`);
     } catch (caughtError) {
       showError(caughtError);
     } finally {
@@ -313,7 +279,7 @@ export function useInspectionRun() {
         return;
       }
       if (runSections.length && !runSections.includes(sectionName)) {
-        setError(`${formatSectionName(sectionName)} is not part of this run.`);
+        setError(`${formatSectionName(sectionName)} is not part of this inspection.`);
         return;
       }
       const fileValidationError = validateSelectedFiles(sectionForm.selectedFiles);
@@ -399,10 +365,7 @@ export function useInspectionRun() {
   );
 
   return {
-    apiUrl,
-    setApiUrl,
     normalizedApiUrl,
-    backendState,
     message,
     error,
     busy,
@@ -415,7 +378,6 @@ export function useInspectionRun() {
     sectionForms,
     updateSectionForm,
     runId,
-    handleRunIdChange,
     runSections,
     runStatus,
     reviewNotes,
@@ -426,7 +388,6 @@ export function useInspectionRun() {
     canStart,
     canFinalizeReport,
     totalUploadedImages,
-    handleHealthCheck,
     refreshStatus,
     createInspectionRun,
     uploadSectionImages,

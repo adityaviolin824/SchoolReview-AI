@@ -1,7 +1,17 @@
 import type { ApiRunStatus, OverallInspectionStatus, SectionName } from "./types";
 
-export const DEFAULT_API_URL = "http://127.0.0.1:8000";
-export const API_URL_STORAGE_KEY = "school-validator-v2-api-url";
+function defaultApiUrl(): string {
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+  if (import.meta.env.DEV) {
+    return "http://127.0.0.1:8000";
+  }
+  return window.location.origin;
+}
+
+export const DEFAULT_API_URL = defaultApiUrl();
 export const LAST_RUN_ID_STORAGE_KEY = "school-validator-v2-last-run-id";
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const SUPPORTED_UPLOAD_EXTENSIONS = [".jpg", ".jpeg", ".png"];

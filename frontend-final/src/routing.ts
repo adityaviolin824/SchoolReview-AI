@@ -1,7 +1,7 @@
 export type AppRoute = "overview" | "new-inspection" | "human-review" | "reports";
 
 export const ROUTES: { id: AppRoute; label: string; description: string }[] = [
-  { id: "overview", label: "Overview", description: "Run status and next action" },
+  { id: "overview", label: "Overview", description: "Inspection status and next action" },
   { id: "new-inspection", label: "New Inspection", description: "Create, upload, and start" },
   { id: "human-review", label: "Human Review", description: "Resolve flagged evidence" },
   { id: "reports", label: "Reports", description: "Finalize and download" },

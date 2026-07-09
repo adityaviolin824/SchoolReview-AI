@@ -2,7 +2,6 @@ import type {
   ApiRunStatus,
   CreateRunPayload,
   CreateRunResponse,
-  HealthResponse,
   HumanReviewItem,
   ReviewDecisionStatus,
   RunStatusResponse,
@@ -37,11 +36,6 @@ async function parseResponse<T>(response: Response): Promise<T> {
     // Keep the generic status message when the backend does not return JSON.
   }
   throw new Error(detail);
-}
-
-export async function checkHealth(apiUrl: string): Promise<HealthResponse> {
-  const response = await fetch(`${normalizeApiUrl(apiUrl)}/health`);
-  return parseResponse<HealthResponse>(response);
 }
 
 export async function createRun(apiUrl: string, payload: CreateRunPayload): Promise<CreateRunResponse> {
