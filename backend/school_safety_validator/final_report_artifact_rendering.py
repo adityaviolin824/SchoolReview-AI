@@ -85,7 +85,6 @@ def build_report_appendix(metadata: dict) -> dict:
         "final_aggregation_json_path": metadata["final_aggregation_json_path"],
         "report_content_json_path": metadata["report_content_json_path"],
         "models": metadata["models"],
-        "processed_categories": metadata["processed_categories"],
         "not_inspected_categories": metadata["not_inspected_categories"],
         "total_images": metadata["total_images"],
         "deterministic_status_floor": metadata["deterministic_status_floor"],
@@ -215,12 +214,11 @@ def build_global_action_groups(content: FinalReportContent) -> list[dict]:
     """Prepare validated global action lists for display."""
 
     return [
-        {"label": "Immediate Actions", "action_items": clean_text_items(content.immediate_actions), "class": "priority-urgent"},
-        {"label": "Maintenance Actions", "action_items": clean_text_items(content.maintenance_actions), "class": "priority-medium"},
+        {"label": "Immediate Actions", "action_items": clean_text_items(content.immediate_actions)},
+        {"label": "Maintenance Actions", "action_items": clean_text_items(content.maintenance_actions)},
         {
             "label": "Documentation Follow-ups",
             "action_items": clean_text_items(content.documentation_followups),
-            "class": "priority-low",
         },
     ]
 
@@ -228,28 +226,18 @@ def build_global_action_groups(content: FinalReportContent) -> list[dict]:
 def build_report_view_model(content: FinalReportContent, metadata: dict, category_packets: list[dict]) -> dict:
     """Build deterministic display data for Markdown, HTML, and PDF renderers."""
 
-    processed_categories = clean_text_items(metadata.get("processed_categories", []))
     not_inspected_categories = clean_text_items(metadata.get("not_inspected_categories", []))
-    total_configured = len(processed_categories) + len(not_inspected_categories)
     human_review_items = sum(1 for packet in category_packets if packet.get("human_review_required"))
     issue_counts = {"high": 0, "medium": 0, "low": 0}
     for packet in category_packets:
         for severity in issue_counts:
             issue_counts[severity] += packet.get("issue_counts", {}).get(severity, 0)
 
-    status_text = status_label(content.overall_status)
     return {
         "title": content.title,
-        "overall_status": content.overall_status,
-        "overall_status_label": status_text,
-        "overall_status_class": status_class(content.overall_status),
         "report_status_label": "Provisional" if content.provisional else "Validated Draft",
         "provisional": content.provisional,
-        "generated_at_utc": metadata["generated_at_utc"],
-        "processed_categories": processed_categories,
         "not_inspected_categories": not_inspected_categories,
-        "processed_category_count": len(processed_categories),
-        "total_category_count": total_configured,
         "total_images": metadata["total_images"],
         "human_review_items": human_review_items,
         "issue_counts": issue_counts,
@@ -259,6 +247,7 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
         "priority_action_rows": build_priority_action_rows(content, category_packets),
         "global_action_groups": build_global_action_groups(content),
         "executive_summary": clean_text_items(content.executive_summary),
+        "key_risks": clean_text_items(metadata.get("key_risks", [])),
         "scope_and_inputs": clean_text_items(content.scope_and_inputs),
         "human_review_notes": clean_text_items(content.human_review_notes),
         "limitations": clean_text_items(content.limitations),
@@ -347,11 +336,8 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
         [
             *cover_lines,
             f"# {content.title}",
-            f"Generated at: {metadata['generated_at_utc']}",
             "## Status Dashboard\n\n"
-            f"- Overall status: {content.overall_status}\n"
             f"- Report status: {view['report_status_label']}\n"
-            f"- Categories processed: {view['processed_category_count']} / {view['total_category_count']}\n"
             f"- Categories not inspected: {len(view['not_inspected_categories'])}\n"
             f"- Human review items: {view['human_review_items']}\n"
             f"- Total images: {view['total_images']}\n"
@@ -363,8 +349,8 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
                 else "No human review items were recorded in the validated report content."
             ),
             "## Executive Summary\n\n" + markdown_list(view["executive_summary"]),
+            "## Key Risks\n\n" + markdown_list(view["key_risks"]),
             "## Category Coverage\n\n"
-            f"Processed categories:\n{markdown_list(view['processed_categories'])}\n\n"
             f"Not inspected categories:\n{markdown_list(view['not_inspected_categories'])}\n\n"
             f"Scope notes:\n{markdown_list(view['scope_and_inputs'])}",
             "## Input Provenance\n\n" + "\n".join(source_lines),
@@ -397,17 +383,17 @@ REPORT_HTML_TEMPLATE = """
   margin: 17mm 15mm 18mm 15mm;
   @top-left {
     content: "School Safety Validator";
-    color: #6b7280;
+    color: #7a684f;
     font-size: 8.5pt;
   }
   @bottom-right {
     content: "Page " counter(page) " of " counter(pages);
-    color: #6b7280;
+    color: #7a684f;
     font-size: 8.5pt;
   }
   @bottom-left {
     content: "AI-assisted visual inspection summary - not a certification";
-    color: #6b7280;
+    color: #7a684f;
     font-size: 8.5pt;
   }
 }
@@ -418,10 +404,11 @@ REPORT_HTML_TEMPLATE = """
   @bottom-right { content: ""; }
 }
 * { box-sizing: border-box; }
-html { color: #182230; font-family: Arial, Helvetica, sans-serif; font-size: 10.2pt; line-height: 1.45; }
-body { margin: 0; }
-h1, h2, h3 { color: #101828; line-height: 1.18; margin: 0; }
-h2 { border-bottom: 1px solid #d0d5dd; font-size: 15pt; margin: 9mm 0 4mm; padding-bottom: 2mm; page-break-after: avoid; }
+html { color: #33291f; font-family: "Aptos", "Avenir Next", "Segoe UI", "Noto Sans", Arial, sans-serif; font-size: 10.2pt; line-height: 1.48; }
+body { background: #fbf8ef; margin: 0; }
+h1, h2, h3 { color: #3f331f; line-height: 1.18; margin: 0; }
+h1 { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
+h2 { border-bottom: 1px solid #c9b27c; color: #4f4f2a; font-size: 15pt; margin: 9mm 0 4mm; padding-bottom: 2mm; page-break-after: avoid; }
 h3 { font-size: 12.5pt; margin: 0 0 3mm; page-break-after: avoid; }
 p { margin: 0 0 3mm; }
 ul { margin: 2mm 0 4mm 5mm; padding: 0; }
@@ -429,55 +416,55 @@ li { margin: 0 0 1.5mm; }
 table { border-collapse: collapse; margin: 3mm 0 7mm; page-break-inside: auto; width: 100%; }
 thead { display: table-header-group; }
 tr { page-break-inside: avoid; }
-th, td { border: 1px solid #d0d5dd; padding: 6px 7px; text-align: left; vertical-align: top; }
-th { background: #eef2f6; color: #344054; font-size: 8.5pt; letter-spacing: .03em; text-transform: uppercase; }
+th, td { border: 1px solid #d8c8a7; padding: 6px 7px; text-align: left; vertical-align: top; }
+th { background: #efe4c8; color: #4d4028; font-size: 8.5pt; letter-spacing: .03em; text-transform: uppercase; }
 td { font-size: 9.2pt; }
-tbody tr:nth-child(even) { background: #f8fafc; }
+tbody tr:nth-child(even) { background: #f7f0df; }
 code, pre { font-family: Consolas, "Courier New", monospace; font-size: 8.4pt; }
-pre { background: #f8fafc; border: 1px solid #d0d5dd; border-radius: 6px; padding: 8px; white-space: pre-wrap; }
-.cover { background: #0b1f33; color: #f8fafc; min-height: 297mm; padding: 21mm; page: cover; page-break-after: always; position: relative; }
-.cover-kicker { color: #93c5fd; font-size: 9pt; font-weight: 700; letter-spacing: .11em; margin-bottom: 7mm; text-transform: uppercase; }
-.cover h1 { color: #fff; font-size: 30pt; max-width: 160mm; }
-.cover-subtitle { color: #dbeafe; font-size: 12.5pt; margin-top: 6mm; max-width: 150mm; }
+pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; padding: 8px; white-space: pre-wrap; }
+.cover { background: linear-gradient(135deg, #3c2c1f 0%, #596239 58%, #9a6b20 100%); color: #fffaf0; min-height: 297mm; padding: 21mm; page: cover; page-break-after: always; position: relative; }
+.cover-kicker { color: #f0c76a; font-size: 9pt; font-weight: 700; letter-spacing: .11em; margin-bottom: 7mm; text-transform: uppercase; }
+.cover h1 { color: #fff8e8; font-size: 30pt; max-width: 160mm; }
+.cover-subtitle { color: #f5e8c8; font-size: 12.5pt; margin-top: 6mm; max-width: 150mm; }
 .cover-grid { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; margin-top: 12mm; }
-.cover-panel { border: 1px solid rgba(255,255,255,.22); border-radius: 8px; padding: 5mm; }
-.cover-label { color: #bfdbfe; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.cover-value { color: #fff; font-size: 12pt; font-weight: 700; margin-top: 2mm; }
-.cover-image { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; margin-top: 10mm; padding: 4mm; }
+.cover-panel { background: rgba(58, 43, 29, .28); border: 1px solid rgba(255,244,214,.36); border-radius: 8px; padding: 5mm; }
+.cover-label { color: #f4d58d; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.cover-value { color: #fffaf0; font-size: 12pt; font-weight: 700; margin-top: 2mm; }
+.cover-image { background: rgba(255,250,240,.1); border: 1px solid rgba(255,244,214,.28); border-radius: 8px; margin-top: 10mm; padding: 4mm; }
 .cover-image img { border-radius: 5px; display: block; width: 100%; }
-.cover-footer { bottom: 17mm; color: #cbd5e1; font-size: 8.8pt; left: 21mm; position: absolute; right: 21mm; }
-.report-header { border-bottom: 3px solid #1d4ed8; margin-bottom: 6mm; padding-bottom: 4mm; }
+.cover-footer { bottom: 17mm; color: #f5e8c8; font-size: 8.8pt; left: 21mm; position: absolute; right: 21mm; }
+.report-header { border-bottom: 3px solid #7b6f38; margin-bottom: 6mm; padding-bottom: 4mm; }
 .report-header h1 { font-size: 21pt; margin-bottom: 2mm; }
-.meta-line { color: #667085; font-size: 9pt; }
+.meta-line { color: #6d5c41; font-size: 9pt; }
 .badge { border-radius: 999px; display: inline-block; font-size: 8.5pt; font-weight: 700; letter-spacing: .02em; padding: 4px 9px; text-transform: uppercase; }
-.status-urgent { background: #991b1b; color: #fff; }
-.status-attention { background: #92400e; color: #fff; }
-.status-insufficient { background: #475467; color: #fff; }
-.status-minor { background: #1d4ed8; color: #fff; }
-.status-acceptable { background: #027a48; color: #fff; }
-.status-neutral { background: #667085; color: #fff; }
-.priority-urgent, .priority-high { background: #fef2f2; color: #991b1b; }
-.priority-medium { background: #fffbeb; color: #92400e; }
-.priority-low { background: #eff6ff; color: #1d4ed8; }
+.status-urgent { background: #8f2f1c; color: #fff; }
+.status-attention { background: #9a6b20; color: #fff; }
+.status-insufficient { background: #6b5f49; color: #fff; }
+.status-minor { background: #626b35; color: #fff; }
+.status-acceptable { background: #46633a; color: #fff; }
+.status-neutral { background: #7a684f; color: #fff; }
+.priority-urgent, .priority-high { background: #f4dfcf; color: #7b2f1d; }
+.priority-medium { background: #f7ebc8; color: #725016; }
+.priority-low { background: #e8edd8; color: #4f5e2f; }
 .status-strip { align-items: stretch; display: grid; gap: 4mm; grid-template-columns: repeat(4, 1fr); margin: 5mm 0 6mm; }
-.metric-card { background: #f8fafc; border: 1px solid #d0d5dd; border-radius: 8px; padding: 4mm; }
-.metric-label { color: #667085; font-size: 8pt; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.metric-value { color: #101828; font-size: 16pt; font-weight: 700; margin-top: 2mm; }
-.metric-note { color: #667085; font-size: 8.5pt; margin-top: 1.5mm; }
-.notice { border-left: 5px solid #92400e; background: #fffbeb; border-radius: 7px; margin: 5mm 0 7mm; padding: 4mm 5mm; }
-.notice strong { color: #7c2d12; }
+.metric-card { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 8px; padding: 4mm; }
+.metric-label { color: #7a684f; font-size: 8pt; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.metric-value { color: #3f331f; font-size: 16pt; font-weight: 700; margin-top: 2mm; }
+.metric-note { color: #7a684f; font-size: 8.5pt; margin-top: 1.5mm; }
+.notice { border-left: 5px solid #9a6b20; background: #f7ebc8; border-radius: 7px; margin: 5mm 0 7mm; padding: 4mm 5mm; }
+.notice strong { color: #684515; }
 .coverage-grid { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; }
-.coverage-box, .section-card, .appendix-card { border: 1px solid #d0d5dd; border-radius: 8px; padding: 4mm; }
+.coverage-box, .section-card, .appendix-card { background: #fffdf7; border: 1px solid #d8c8a7; border-radius: 8px; padding: 4mm; }
 .section-card { margin: 0 0 5mm; page-break-inside: avoid; }
-.section-header { align-items: center; border-bottom: 1px solid #e4e7ec; display: flex; justify-content: space-between; margin-bottom: 3mm; padding-bottom: 2mm; }
-.section-meta { color: #667085; font-size: 8.8pt; margin-top: 1mm; }
+.section-header { align-items: center; border-bottom: 1px solid #ded1b1; display: flex; justify-content: space-between; margin-bottom: 3mm; padding-bottom: 2mm; }
+.section-meta { color: #7a684f; font-size: 8.8pt; margin-top: 1mm; }
 .issue-pills { display: flex; gap: 2mm; margin: 3mm 0; }
-.pill { border: 1px solid #d0d5dd; border-radius: 999px; color: #344054; font-size: 8.3pt; padding: 2px 7px; }
+.pill { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 999px; color: #4d4028; font-size: 8.3pt; padding: 2px 7px; }
 .two-column { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; }
 .finding-list { margin-top: 2mm; }
-.finding-item { border-left: 3px solid #d0d5dd; margin: 0 0 3mm; padding-left: 3mm; }
-.muted { color: #667085; }
-.disclaimer { background: #fff7ed; border: 1px solid #fed7aa; border-left: 5px solid #f97316; border-radius: 8px; font-weight: 700; margin-top: 4mm; padding: 4mm; }
+.finding-item { border-left: 3px solid #b7a267; margin: 0 0 3mm; padding-left: 3mm; }
+.muted { color: #7a684f; }
+.disclaimer { background: #f7ebc8; border: 1px solid #d8c8a7; border-left: 5px solid #9a6b20; border-radius: 8px; font-weight: 700; margin-top: 4mm; padding: 4mm; }
 .page-break { page-break-before: always; }
 </style>
 </head>
@@ -487,10 +474,9 @@ pre { background: #f8fafc; border: 1px solid #d0d5dd; border-radius: 6px; paddin
   <h1>{{ view.title }}</h1>
   <p class="cover-subtitle">Enterprise inspection report generated from validated category evidence packets and deterministic rendering checks.</p>
   <div class="cover-grid">
-    <div class="cover-panel"><div class="cover-label">Overall status</div><div class="cover-value">{{ view.overall_status_label }}</div></div>
     <div class="cover-panel"><div class="cover-label">Report status</div><div class="cover-value">{{ view.report_status_label }}</div></div>
-    <div class="cover-panel"><div class="cover-label">Categories processed</div><div class="cover-value">{{ view.processed_category_count }} / {{ view.total_category_count }}</div></div>
-    <div class="cover-panel"><div class="cover-label">Generated at</div><div class="cover-value">{{ view.generated_at_utc }}</div></div>
+    <div class="cover-panel"><div class="cover-label">Evidence images</div><div class="cover-value">{{ view.total_images }}</div></div>
+    <div class="cover-panel"><div class="cover-label">Review items</div><div class="cover-value">{{ view.human_review_items }}</div></div>
   </div>
   {% if cover_image_url %}<div class="cover-image"><img src="{{ cover_image_url }}" alt="School inspection report visual"></div>{% endif %}
   <div class="cover-footer">{{ view.disclaimer }}</div>
@@ -498,24 +484,23 @@ pre { background: #f8fafc; border: 1px solid #d0d5dd; border-radius: 6px; paddin
 <main>
 <div class="report-header">
   <h1>{{ view.title }}</h1>
-  <p class="meta-line">Generated at {{ view.generated_at_utc }} | Deterministic status floor: {{ view.deterministic_status_floor }}</p>
+  <p class="meta-line">AI-assisted visual inspection summary | Deterministic status floor: {{ view.deterministic_status_floor }}</p>
 </div>
 <div class="status-strip">
-  <div class="metric-card"><div class="metric-label">Overall status</div><div class="metric-value"><span class="badge {{ view.overall_status_class }}">{{ view.overall_status }}</span></div><div class="metric-note">{{ view.overall_status_label }}</div></div>
   <div class="metric-card"><div class="metric-label">Report status</div><div class="metric-value">{{ view.report_status_label }}</div><div class="metric-note">Human review before decisions</div></div>
-  <div class="metric-card"><div class="metric-label">Coverage</div><div class="metric-value">{{ view.processed_category_count }} / {{ view.total_category_count }}</div><div class="metric-note">Configured categories processed</div></div>
   <div class="metric-card"><div class="metric-label">Evidence</div><div class="metric-value">{{ view.total_images }}</div><div class="metric-note">Images represented in category packets</div></div>
+  <div class="metric-card"><div class="metric-label">Not inspected</div><div class="metric-value">{{ view.not_inspected_categories|length }}</div><div class="metric-note">Configured categories without evidence</div></div>
+  <div class="metric-card"><div class="metric-label">Review items</div><div class="metric-value">{{ view.human_review_items }}</div><div class="metric-note">Categories needing human review</div></div>
 </div>
 {% if view.provisional or view.human_review_items %}
 <div class="notice"><strong>Human review required.</strong> This report is provisional and requires human review before decisions are made. Review-required category count: {{ view.human_review_items }}.</div>
 {% endif %}
 <h2>Executive Summary</h2>
 <ul>{% for item in view.executive_summary %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
+<h2>Key Risks</h2>
+<ul>{% for item in view.key_risks %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
 <h2>Category Coverage</h2>
-<div class="coverage-grid">
-  <div class="coverage-box"><h3>Processed categories</h3><ul>{% for item in view.processed_categories %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
-  <div class="coverage-box"><h3>Not inspected categories</h3><ul>{% for item in view.not_inspected_categories %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
-</div>
+<div class="coverage-box"><h3>Not inspected categories</h3><ul>{% for item in view.not_inspected_categories %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
 <h2>Scope and Inputs</h2>
 <ul>{% for item in view.scope_and_inputs %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
 <h2>Input Provenance</h2>
@@ -625,6 +610,7 @@ def render_report_pdf_with_reportlab(
 
     from PIL import Image as PILImage
     from reportlab.lib import colors
+    from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
@@ -632,17 +618,69 @@ def render_report_pdf_with_reportlab(
     from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     styles = getSampleStyleSheet()
+    styles["Title"].fontName = "Times-Bold"
+    styles["Title"].textColor = colors.HexColor("#3f331f")
+    styles["BodyText"].fontName = "Helvetica"
+    styles["BodyText"].textColor = colors.HexColor("#33291f")
+    styles["BodyText"].leading = 13.5
+    styles["Normal"].textColor = colors.HexColor("#33291f")
+    styles["Heading2"].fontName = "Times-Bold"
+    styles["Heading2"].textColor = colors.HexColor("#4f4f2a")
+    styles["Heading3"].fontName = "Times-Bold"
+    styles["Heading3"].textColor = colors.HexColor("#5b4a2e")
+    styles["Heading4"].textColor = colors.HexColor("#5b4a2e")
     styles.add(
         ParagraphStyle(
             name="CoverText",
             parent=styles["BodyText"],
-            textColor=colors.HexColor("#d8e7f7"),
+            textColor=colors.HexColor("#f5e8c8"),
             fontSize=11,
             leading=15,
         )
     )
-    styles["Heading2"].textColor = colors.HexColor("#12385b")
-    styles["Heading3"].textColor = colors.HexColor("#23435f")
+    styles.add(
+        ParagraphStyle(
+            name="CoverKicker",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#f0c76a"),
+            fontSize=11,
+            leading=13,
+            spaceAfter=10,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="CoverTitle",
+            parent=styles["Title"],
+            fontName="Times-Bold",
+            textColor=colors.HexColor("#fff8e8"),
+            fontSize=32,
+            leading=36,
+            spaceAfter=10,
+            alignment=TA_LEFT,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="CoverMetricLabel",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#f4d58d"),
+            fontSize=8.5,
+            leading=10,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="CoverMetricValue",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#fffaf0"),
+            fontSize=14,
+            leading=17,
+        )
+    )
     styles["BodyText"].wordWrap = "CJK"
     styles.add(
         ParagraphStyle(
@@ -651,7 +689,7 @@ def render_report_pdf_with_reportlab(
             fontName="Helvetica-Bold",
             fontSize=8,
             leading=9.5,
-            textColor=colors.HexColor("#182230"),
+            textColor=colors.HexColor("#4d4028"),
             wordWrap="CJK",
         )
     )
@@ -661,63 +699,87 @@ def render_report_pdf_with_reportlab(
             parent=styles["BodyText"],
             fontSize=8.2,
             leading=10,
+            textColor=colors.HexColor("#33291f"),
             wordWrap="CJK",
         )
     )
     view = build_report_view_model(content, metadata, category_packets)
 
     story = [
-        Table(
-            [[Paragraph("AI-assisted school condition validator", styles["CoverText"])]],
-            colWidths=[170 * mm],
-            style=[
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#071f3d")),
-                ("BOX", (0, 0), (-1, -1), 0, colors.HexColor("#071f3d")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ],
-        ),
-        Spacer(1, 10 * mm),
-        Paragraph(reportlab_text(content.title), styles["Title"]),
+        Spacer(1, 7 * mm),
+        Paragraph("AI-ASSISTED SCHOOL CONDITION VALIDATOR", styles["CoverKicker"]),
+        Paragraph(reportlab_text(content.title), styles["CoverTitle"]),
         Paragraph(
             "A cautious visual inspection summary generated from category-level evidence packets and deterministic validation checks.",
-            styles["BodyText"],
+            styles["CoverText"],
         ),
-        Spacer(1, 6 * mm),
+        Spacer(1, 7 * mm),
+        Table(
+            [
+                [
+                    [
+                        Paragraph("REPORT STATUS", styles["CoverMetricLabel"]),
+                        Paragraph(reportlab_text(view["report_status_label"]), styles["CoverMetricValue"]),
+                    ],
+                    [
+                        Paragraph("EVIDENCE IMAGES", styles["CoverMetricLabel"]),
+                        Paragraph(str(view["total_images"]), styles["CoverMetricValue"]),
+                    ],
+                ],
+                [
+                    [
+                        Paragraph("REVIEW ITEMS", styles["CoverMetricLabel"]),
+                        Paragraph(str(view["human_review_items"]), styles["CoverMetricValue"]),
+                    ],
+                    "",
+                ],
+            ],
+            colWidths=[62 * mm, 62 * mm],
+            rowHeights=[20 * mm, 20 * mm],
+            hAlign="LEFT",
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#4a4729")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ],
+        ),
+        Spacer(1, 7 * mm),
     ]
 
     cover_image_path = Path(metadata["cover_image_path"]) if metadata.get("cover_image_path") else None
     if cover_image_path and cover_image_path.exists():
         image_width_px, image_height_px = PILImage.open(cover_image_path).size
-        cover_width = 170 * mm
+        cover_width = 112 * mm
         cover_height = cover_width * image_height_px / image_width_px
         cover_image = RLImage(str(cover_image_path), width=cover_width, height=cover_height)
         cover_image.hAlign = "CENTER"
-        story.extend([cover_image, Spacer(1, 7 * mm)])
+        image_frame = Table(
+            [[cover_image]],
+            colWidths=[126 * mm],
+            style=[
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#626744")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ],
+        )
+        story.extend([image_frame, Spacer(1, 4 * mm)])
 
     story.extend(
         [
-            Paragraph(f"Generated at: {reportlab_text(metadata['generated_at_utc'])}", styles["BodyText"]),
-            Paragraph(f"Overall status: {reportlab_text(content.overall_status)}", styles["BodyText"]),
-            Paragraph(f"Provisional: {'Yes' if content.provisional else 'No'}", styles["BodyText"]),
-            Paragraph(
-                f"Categories processed: {view['processed_category_count']} / {view['total_category_count']}",
-                styles["BodyText"],
-            ),
-            Paragraph(reportlab_text(content.disclaimer), styles["BodyText"]),
+            Paragraph(reportlab_text(content.disclaimer), styles["CoverText"]),
             PageBreak(),
-            Paragraph(f"Generated at: {reportlab_text(metadata['generated_at_utc'])}", styles["Normal"]),
             Paragraph("Overall Verdict", styles["Heading2"]),
-            Paragraph(f"Overall status: {reportlab_text(content.overall_status)}", styles["BodyText"]),
             Paragraph(f"Provisional: {'Yes' if content.provisional else 'No'}", styles["BodyText"]),
             Paragraph(
                 f"Deterministic status floor: {reportlab_text(metadata['deterministic_status_floor'])}",
-                styles["BodyText"],
-            ),
-            Paragraph(
-                f"Categories processed: {view['processed_category_count']} / {view['total_category_count']}",
                 styles["BodyText"],
             ),
             Paragraph(f"Human review items: {view['human_review_items']}", styles["BodyText"]),
@@ -736,9 +798,9 @@ def render_report_pdf_with_reportlab(
         [
             Paragraph("Executive Summary", styles["Heading2"]),
             *reportlab_bullet_list(content.executive_summary, styles),
+            Paragraph("Key Risks", styles["Heading2"]),
+            *reportlab_bullet_list(view["key_risks"], styles),
             Paragraph("Category Coverage", styles["Heading2"]),
-            Paragraph("Processed categories", styles["Heading3"]),
-            *reportlab_bullet_list(view["processed_categories"], styles),
             Paragraph("Not inspected categories", styles["Heading3"]),
             *reportlab_bullet_list(view["not_inspected_categories"], styles),
             Paragraph("Scope and Inputs", styles["Heading2"]),
@@ -777,8 +839,8 @@ def render_report_pdf_with_reportlab(
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f4f7")),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d0d5dd")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efe4c8")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8c8a7")),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
@@ -807,8 +869,8 @@ def render_report_pdf_with_reportlab(
         priority_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f4f7")),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d0d5dd")),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efe4c8")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8c8a7")),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ]
@@ -861,7 +923,21 @@ def render_report_pdf_with_reportlab(
         topMargin=22 * mm,
         bottomMargin=22 * mm,
     )
-    document.build(story)
+
+    def draw_cover_background(canvas, _document) -> None:
+        canvas.saveState()
+        page_width, page_height = A4
+        canvas.setFillColor(colors.HexColor("#4f5330"))
+        canvas.rect(0, 0, page_width, page_height, stroke=0, fill=1)
+        canvas.setFillColor(colors.HexColor("#3c2c1f"))
+        canvas.rect(0, 0, 86 * mm, page_height, stroke=0, fill=1)
+        canvas.setFillColor(colors.HexColor("#70621f"))
+        canvas.rect(86 * mm, 0, page_width - 86 * mm, page_height, stroke=0, fill=1)
+        canvas.setFillColor(colors.Color(1, 1, 1, alpha=0.06))
+        canvas.rect(0, 0, page_width, 42 * mm, stroke=0, fill=1)
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=draw_cover_background)
 
 
 def render_report_pdf(
@@ -913,6 +989,7 @@ def save_final_report_outputs(
         "report_generation_payload": output_root / "report_generation_payload.json",
     }
 
+    metadata["key_risks"] = payload.get("validated_final_verdict", {}).get("key_risks", [])
     markdown_text = render_report_markdown(content, metadata, category_packets)
     html_text = render_report_html(content, metadata, category_packets)
     paths["markdown_report"].write_text(markdown_text, encoding="utf-8")

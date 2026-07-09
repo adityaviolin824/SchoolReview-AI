@@ -62,6 +62,28 @@ class StartInspectionRunResponse(BaseModel):
     status: ApiRunStatus
 
 
+class HumanReviewFindingSummary(BaseModel):
+    """Short visible finding text for human-review display."""
+
+    issue_type: str = ""
+    visibility: str = ""
+    severity: str = ""
+    evidence: str = ""
+    confidence: float | None = None
+
+
+class HumanReviewModelSummary(BaseModel):
+    """Small model inference summary without raw model JSON."""
+
+    risk_severity: str = ""
+    risk_reason: str = ""
+    recommended_action: str = ""
+    officer_comment_status: str = ""
+    officer_comment_reason: str = ""
+    uncertainties: list[str] = Field(default_factory=list)
+    visible_findings: list[HumanReviewFindingSummary] = Field(default_factory=list)
+
+
 class HumanReviewApiItem(BaseModel):
     """Sanitized human-review item safe for API responses."""
 
@@ -70,6 +92,9 @@ class HumanReviewApiItem(BaseModel):
     image_id: str
     reason: str
     status: str
+    image_available: bool = False
+    model_summary: HumanReviewModelSummary = Field(default_factory=HumanReviewModelSummary)
+    reviewer_notes: str = ""
 
 
 class HumanReviewDecisionRequest(BaseModel):

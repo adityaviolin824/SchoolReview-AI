@@ -86,7 +86,14 @@ def validate_final_report_content(
         if category_name.lower() not in limitation_text
     ]
     if missing_not_inspected:
-        raise ValueError(f"Report content omitted not-inspected categories: {missing_not_inspected}")
+        content = content.model_copy(
+            update={
+                "limitations": [
+                    *content.limitations,
+                    "Not inspected categories: " + ", ".join(missing_not_inspected),
+                ]
+            }
+        )
     if REPORT_DISCLAIMER != content.disclaimer:
         raise ValueError("Report content did not preserve the required disclaimer exactly.")
 

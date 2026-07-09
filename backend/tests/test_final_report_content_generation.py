@@ -116,6 +116,20 @@ def test_validate_final_report_content_accepts_matching_content() -> None:
     assert validated.disclaimer == REPORT_DISCLAIMER
 
 
+def test_validate_final_report_content_repairs_missing_not_inspected_limitation() -> None:
+    rollup = global_rollup()
+    rollup["not_inspected_categories"] = ["ceiling", "fire_extinguisher"]
+
+    validated = validate_final_report_content(
+        report_content(),
+        aggregation_report(),
+        category_packets(),
+        rollup,
+    )
+
+    assert validated.limitations[-1] == "Not inspected categories: fire_extinguisher"
+
+
 def test_validate_final_report_content_rejects_status_changes() -> None:
     with pytest.raises(ValueError, match="overall_status"):
         validate_final_report_content(

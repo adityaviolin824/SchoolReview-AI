@@ -34,6 +34,8 @@ from .inspection_api_models import (
     HumanReviewApiItem,
     HumanReviewDecisionRequest,
     HumanReviewDecisionResponse,
+    HumanReviewFindingSummary,
+    HumanReviewModelSummary,
     InspectionRunCreateRequest,
     InspectionRunCreateResponse,
     InspectionRunStatusResponse,
@@ -141,7 +143,77 @@ def upload_root(run_id: str, section_name: str) -> Path:
     return run_root(run_id) / "uploads" / section_name
 
 
+def find_human_review_item(record: InspectionRunRecord, review_id: str) -> dict | None:
+    """Return one raw human-review item for a run."""
+
+    review_items = record.result.human_review_items if record.result else []
+    for item in review_items:
+        if str(item.get("review_id", "")) == review_id:
+            return item
+    return None
+
+
+def safe_human_review_image_path(record: InspectionRunRecord, item: dict) -> Path | None:
+    """Return a review image path only when it stays inside this run root."""
+
+    raw_image_path = str(item.get("raw_image_path", "")).strip()
+    if not raw_image_path:
+        return None
+
+    image_path = Path(raw_image_path).resolve()
+    resolved_run_root = run_root(record.run_id).resolve()
+    if not image_path.is_relative_to(resolved_run_root):
+        return None
+    if image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        return None
+    if not image_path.is_file():
+        return None
+    return image_path
+
+
+def build_human_review_model_summary(item: dict) -> HumanReviewModelSummary:
+    """Extract concise display text from the model assessment."""
+
+    assessment = item.get("model_assessment") if isinstance(item.get("model_assessment"), dict) else {}
+    risk_assessment = assessment.get("risk_assessment") if isinstance(assessment.get("risk_assessment"), dict) else {}
+    recommended_action = (
+        assessment.get("recommended_action") if isinstance(assessment.get("recommended_action"), dict) else {}
+    )
+    officer_comment_assessment = (
+        assessment.get("officer_comment_assessment")
+        if isinstance(assessment.get("officer_comment_assessment"), dict)
+        else {}
+    )
+    raw_uncertainties = assessment.get("uncertainties") if isinstance(assessment.get("uncertainties"), list) else []
+    raw_findings = assessment.get("visual_findings") if isinstance(assessment.get("visual_findings"), list) else []
+
+    visible_findings = []
+    for finding in raw_findings:
+        if not isinstance(finding, dict) or finding.get("visibility") != "visible":
+            continue
+        visible_findings.append(
+            HumanReviewFindingSummary(
+                issue_type=str(finding.get("issue_type", "")),
+                visibility=str(finding.get("visibility", "")),
+                severity=str(finding.get("severity", "")),
+                evidence=str(finding.get("evidence", "")),
+                confidence=finding.get("confidence") if isinstance(finding.get("confidence"), (int, float)) else None,
+            )
+        )
+
+    return HumanReviewModelSummary(
+        risk_severity=str(risk_assessment.get("severity", "")),
+        risk_reason=str(risk_assessment.get("reason", "")),
+        recommended_action=str(recommended_action.get("action_text", "")),
+        officer_comment_status=str(officer_comment_assessment.get("status", "")),
+        officer_comment_reason=str(officer_comment_assessment.get("reason", "")),
+        uncertainties=[str(item) for item in raw_uncertainties],
+        visible_findings=visible_findings,
+    )
+
+
 def sanitize_human_review_item(
+    record: InspectionRunRecord,
     item: dict,
     decisions: dict[str, HumanReviewDecisionRequest] | None = None,
 ) -> HumanReviewApiItem:
@@ -155,6 +227,9 @@ def sanitize_human_review_item(
         image_id=str(item.get("image_id", "")),
         reason=str(item.get("reason", "")),
         status=decision.status if decision else str(item.get("status", "pending")),
+        image_available=safe_human_review_image_path(record, item) is not None,
+        model_summary=build_human_review_model_summary(item),
+        reviewer_notes=decision.notes if decision else "",
     )
 
 
@@ -219,7 +294,7 @@ def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusRes
         total_images=result.total_images,
         human_review_required=result.human_review_required,
         human_review_items=[
-            sanitize_human_review_item(item, record.human_review_decisions) for item in result.human_review_items
+            sanitize_human_review_item(record, item, record.human_review_decisions) for item in result.human_review_items
         ],
         category_summaries=sanitize_category_summaries(result),
         artifacts=downloadable_artifact_names(result, record.run_id),
@@ -403,7 +478,25 @@ def list_human_review_items(run_id: str) -> list[HumanReviewApiItem]:
     record = get_run_record(run_id)
     if record.result is None:
         return []
-    return [sanitize_human_review_item(item, record.human_review_decisions) for item in record.result.human_review_items]
+    return [
+        sanitize_human_review_item(record, item, record.human_review_decisions)
+        for item in record.result.human_review_items
+    ]
+
+
+@router.get("/inspection-runs/{run_id}/human-review/{review_id}/image")
+def download_human_review_image(run_id: str, review_id: str) -> FileResponse:
+    """Return the flagged review image when it is inside this run root."""
+
+    record = get_run_record(run_id)
+    item = find_human_review_item(record, review_id)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Human-review item was not found for this run.")
+
+    image_path = safe_human_review_image_path(record, item)
+    if image_path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Human-review image was not found for this run.")
+    return FileResponse(image_path, filename=image_path.name)
 
 
 @router.post(
@@ -418,9 +511,7 @@ def record_human_review_decision(
     """Record a manual human-review decision for a flagged image."""
 
     record = get_run_record(run_id)
-    review_items = record.result.human_review_items if record.result else []
-    known_review_ids = {str(item.get("review_id", "")) for item in review_items}
-    if review_id not in known_review_ids:
+    if find_human_review_item(record, review_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Human-review item was not found for this run.")
 
     record.human_review_decisions[review_id] = payload

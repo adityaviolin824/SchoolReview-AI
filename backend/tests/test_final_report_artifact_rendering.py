@@ -85,6 +85,7 @@ def metadata(tmp_path: Path) -> dict:
         "not_inspected_categories": ["ceiling"],
         "total_images": 1,
         "deterministic_status_floor": "insufficient_evidence",
+        "key_risks": ["Visible classroom maintenance concern."],
     }
 
 
@@ -103,7 +104,7 @@ def test_save_final_report_outputs_writes_and_validates_all_artifacts(monkeypatc
 
     paths = save_final_report_outputs(
         report_content(),
-        {"payload": "value"},
+        {"validated_final_verdict": {"key_risks": ["Visible classroom maintenance concern."]}},
         metadata(tmp_path),
         category_packets(),
         {
@@ -122,16 +123,23 @@ def test_save_final_report_outputs_writes_and_validates_all_artifacts(monkeypatc
     assert paths["report_generation_payload"].exists()
 
 
-def test_enterprise_report_renderers_include_status_coverage_and_actions(tmp_path: Path) -> None:
+def test_enterprise_report_renderers_include_risks_scope_and_actions(tmp_path: Path) -> None:
     html_text = render_report_html(report_content(), metadata(tmp_path), category_packets())
     markdown_text = render_report_markdown(report_content(), metadata(tmp_path), category_packets())
 
     assert "Status Dashboard" in markdown_text
     assert "Category Coverage" in markdown_text
+    assert "Key Risks" in markdown_text
     assert "Priority Actions" in markdown_text
     assert "Section-wise Findings" in markdown_text
+    assert "Overall status" not in markdown_text
+    assert "Categories processed" not in markdown_text
+    assert "Generated at" not in markdown_text
     assert "Human review required" in html_text
-    assert "Categories processed" in html_text
+    assert "Key Risks" in html_text
+    assert "Overall status" not in html_text
+    assert "Categories processed" not in html_text
+    assert "Generated at" not in html_text
     assert "Priority Actions" in html_text
     assert "Section-wise Findings" in html_text
 

@@ -113,6 +113,7 @@ export async function recordHumanReviewDecision(
   runId: string,
   item: HumanReviewItem,
   status: "reviewed" | "deferred",
+  notes: string,
 ): Promise<void> {
   const response = await fetch(
     `${normalizeApiUrl(apiUrl)}/inspection-runs/${encodeURIComponent(runId)}/human-review/${encodeURIComponent(
@@ -121,10 +122,16 @@ export async function recordHumanReviewDecision(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, notes: status === "reviewed" ? "Reviewed in frontend." : "Deferred in frontend." }),
+      body: JSON.stringify({ status, notes }),
     },
   );
   await parseResponse(response);
+}
+
+export function humanReviewImageUrl(apiUrl: string, runId: string, reviewId: string): string {
+  return `${normalizeApiUrl(apiUrl)}/inspection-runs/${encodeURIComponent(runId)}/human-review/${encodeURIComponent(
+    reviewId,
+  )}/image`;
 }
 
 export function artifactUrl(apiUrl: string, runId: string, artifactName: string): string {

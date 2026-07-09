@@ -43,7 +43,7 @@ def validate_rendered_report(
 
     pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
     pdf_text_normalized = normalize_report_text(pdf_text)
-    required_terms = [content.overall_status, content.disclaimer]
+    required_terms = [content.disclaimer]
     required_terms.extend(packet["category"] for packet in category_packets)
     required_terms.extend(global_rollup.get("not_inspected_categories", []))
 

@@ -32,12 +32,33 @@ export type UploadedImageResponse = {
   original_filename: string;
 };
 
+export type HumanReviewFindingSummary = {
+  issue_type: string;
+  visibility: string;
+  severity: string;
+  evidence: string;
+  confidence: number | null;
+};
+
+export type HumanReviewModelSummary = {
+  risk_severity: string;
+  risk_reason: string;
+  recommended_action: string;
+  officer_comment_status: string;
+  officer_comment_reason: string;
+  uncertainties: string[];
+  visible_findings: HumanReviewFindingSummary[];
+};
+
 export type HumanReviewItem = {
   review_id: string;
   category_name: string;
   image_id: string;
   reason: string;
   status: string;
+  image_available: boolean;
+  model_summary: HumanReviewModelSummary;
+  reviewer_notes: string;
 };
 
 export type CategorySummary = {
