@@ -48,6 +48,7 @@ frontend-refinement-plan.md
 code-simplification-advice.md
 CURRENT_STATUS.md
 overall_app_review.md
+backend/running_instructions_v2.md
 
 # FastAPI/runtime artifacts
 *.log
