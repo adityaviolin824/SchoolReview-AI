@@ -39,7 +39,7 @@ export function AppShell({ route, attentionRoute = null, routeBadges = {}, onNav
         <div className="brand-lockup">
           <ShieldMark />
           <div>
-            <strong>School Safety Validator</strong>
+            <strong>SchoolReview AI</strong>
             <span>VLM automation with human review</span>
           </div>
         </div>

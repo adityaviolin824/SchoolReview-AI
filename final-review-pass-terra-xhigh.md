@@ -8,7 +8,7 @@ Reviewed the active product path end to end:
 
 - Backend modules in `backend/school_safety_validator/`, including image workflow, deterministic rules, aggregation, report generation, storage, and runtime settings.
 - FastAPI models, routes, CORS, background workflow, artifact access, and API/Frontend contract.
-- The shipped React client in `frontend-final/`.
+- The shipped React client in `frontend/`.
 - Dockerfile, `.dockerignore`, built container, and same-origin static frontend serving.
 - The unreferenced `frontend-testing/` client, because it is another runnable frontend in the repository.
 
@@ -20,7 +20,7 @@ Result: the local MVP is coherent and its tested flow works. There is one materi
 
 - Completed: LangSmith tracing is now opt-in through `LANGSMITH_TRACING=true`, with regression coverage for the disabled default and explicit enabled state.
 - Completed: the deprecated `generate_report` start option now defaults to `false` and describes the separate finalization route in OpenAPI.
-- Completed: the inactive `frontend-testing/` client was removed; `frontend-final/` is the only frontend in the repository and Docker image.
+- Completed: the inactive `frontend-testing/` client was removed; `frontend/` is the only frontend in the repository and Docker image.
 - Completed: Ruff is a backend development dependency, and the frontend has a `npm run check` type-check command.
 
 The verification results below were rerun after these changes.
@@ -51,8 +51,8 @@ Do this before demonstrating the application with real school images or credenti
 
 `frontend-testing/` is a separate runnable React application. It builds successfully, but:
 
-- `README.md` documents only `frontend-final/`.
-- `Dockerfile` builds and serves only `frontend-final/`.
+- `README.md` documents only `frontend/`.
+- `Dockerfile` builds and serves only `frontend/`.
 - `.dockerignore` excludes `frontend-testing/` from the image.
 - Both frontends use the same default Vite development port, `5173`.
 
@@ -95,7 +95,7 @@ Do not add a database, queue, or application-level authentication solely for the
 | Area | Evidence | Result |
 | --- | --- | --- |
 | Backend tests | `uv run --no-sync pytest -q -p no:cacheprovider` | 57 passed; two third-party deprecation warnings only. |
-| Active frontend | `npm run build` in `frontend-final/` | Passed TypeScript checks and Vite production build. |
+| Active frontend | `npm run build` in `frontend/` | Passed TypeScript checks and Vite production build. |
 | Legacy frontend | `npm run build` in `frontend-testing/` | Passed; it is not part of the shipped path. |
 | Frontend dependency audit | `npm audit --omit=dev --audit-level=high --package-lock-only --offline` | No production high-severity vulnerabilities reported. |
 | API health and CORS | Live FastAPI server | `/health` returned 200; Vite origin received the expected CORS allow-origin response. |

@@ -2,7 +2,7 @@
 
 Review date: 2026-07-09
 
-Scope: `backend/` and `frontend-final/`, including the API contract between them.
+Scope: `backend/` and `frontend/`, including the API contract between them.
 
 Allowed edits in this pass: this review file and `backend/final-backend-code-review.md` only. No application source code was intentionally changed.
 
@@ -21,17 +21,17 @@ The main demo caveat is product behavior, not coupling: the frontend defaults to
 
 2. Frontend TypeScript checks:
    - Command: `./node_modules/.bin/tsc --noEmit -p tsconfig.json`
-   - Working directory: `frontend-final/`
+   - Working directory: `frontend/`
    - Result: passed.
    - Command: `./node_modules/.bin/tsc --noEmit -p tsconfig.node.json`
-   - Working directory: `frontend-final/`
+   - Working directory: `frontend/`
    - Result: passed.
 
 3. Frontend production build:
    - Command: `./node_modules/.bin/vite build --outDir /private/tmp/school-validator-frontend-build --emptyOutDir`
-   - Working directory: `frontend-final/`
+   - Working directory: `frontend/`
    - Result: passed.
-   - Output was written to `/private/tmp`, not to `frontend-final/dist`.
+   - Output was written to `/private/tmp`, not to `frontend/dist`.
 
 4. Secret safety:
    - Ran a filename-only high-confidence secret scan.
@@ -55,7 +55,7 @@ What is coupled correctly:
 Important limitation:
 
 - Backend static serving looks for `backend/static/frontend/index.html` in `backend/school_safety_validator/api/fastapi_application.py:18` to `backend/school_safety_validator/api/fastapi_application.py:55`.
-- The current frontend build outputs to `frontend-final/dist`.
+- The current frontend build outputs to `frontend/dist`.
 - That means the project is coupled cleanly as a two-server local demo, but not as a single bundled FastAPI-served frontend unless you copy or build the frontend into `backend/static/frontend`.
 
 MVP advice:
@@ -85,7 +85,7 @@ Not a demo blocker. If you want one small hardening fix later, add a synthetic r
 
 Evidence:
 
-- Frontend initializes only `classroom` as selected in `frontend-final/src/hooks/useInspectionRun.ts:47` to `frontend-final/src/hooks/useInspectionRun.ts:58`.
+- Frontend initializes only `classroom` as selected in `frontend/src/hooks/useInspectionRun.ts:47` to `frontend/src/hooks/useInspectionRun.ts:58`.
 - Backend final aggregation requires all configured categories for a complete verdict in `backend/school_safety_validator/final_verdict_aggregation.py:19`.
 - Missing configured categories floor the verdict to `insufficient_evidence` in `backend/school_safety_validator/final_verdict_aggregation.py:215` to `backend/school_safety_validator/final_verdict_aggregation.py:222`.
 
@@ -101,7 +101,7 @@ This is acceptable. For the video, either select/upload all categories or narrat
 
 Evidence:
 
-- `frontend-final/src/hooks/useInspectionRun.ts:307` to `frontend-final/src/hooks/useInspectionRun.ts:323` uploads all selected files with `Promise.all`.
+- `frontend/src/hooks/useInspectionRun.ts:307` to `frontend/src/hooks/useInspectionRun.ts:323` uploads all selected files with `Promise.all`.
 - The hook refreshes status only after the whole batch succeeds.
 - If one upload succeeds and another fails server-side, the accepted file can exist on the backend while the frontend does not append it locally or refresh status in the catch path.
 

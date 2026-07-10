@@ -1,4 +1,4 @@
-# School Safety Validator: Consolidated Output Review Notes
+# SchoolReview AI: Consolidated Output Review Notes
 
 > Historical note: This file captures a June 2026 review pass over consolidated model outputs. Model names and architecture ideas reflect the project state at that time.
 
@@ -7,7 +7,7 @@ Source file reviewed: `all_categories_image_assessments_with_privacy_updated_con
 
 ## 1. Context
 
-This review is based on the consolidated image-assessment JSON for the School Safety Validator MVP.
+This review is based on the consolidated image-assessment JSON for the SchoolReview AI MVP.
 
 The file contains image-level safety assessments generated using:
 

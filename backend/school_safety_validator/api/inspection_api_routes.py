@@ -1,4 +1,4 @@
-"""Minimal FastAPI routes for testing the School Safety Validator pipeline."""
+"""Minimal FastAPI routes for testing the SchoolReview AI pipeline."""
 
 from __future__ import annotations
 

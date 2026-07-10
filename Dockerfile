@@ -2,12 +2,12 @@
 
 FROM node:22-bookworm-slim AS frontend-builder
 
-WORKDIR /app/frontend-final
+WORKDIR /app/frontend
 
-COPY frontend-final/package*.json ./
+COPY frontend/package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-COPY frontend-final/ ./
+COPY frontend/ ./
 ARG VITE_API_URL=""
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
@@ -44,7 +44,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY backend/school_safety_validator ./school_safety_validator
 COPY backend/utility_files ./utility_files
-COPY --from=frontend-builder /app/frontend-final/dist ./static/frontend
+COPY --from=frontend-builder /app/frontend/dist ./static/frontend
 
 EXPOSE 8000
 

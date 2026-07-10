@@ -20,7 +20,7 @@ I would not spend effort on production architecture right now. The one correctne
    - Did not apply fixes or workarounds.
 
 2. Secret safety:
-   - Ran a filename-only high-confidence secret pattern scan against `backend` and `frontend-final`.
+   - Ran a filename-only high-confidence secret pattern scan against `backend` and `frontend`.
    - Result: no matching files printed.
    - `backend/.env` exists and was not opened.
 

@@ -1,4 +1,4 @@
-"""End-to-end School Safety Validator pipeline entry point."""
+"""End-to-end SchoolReview AI pipeline entry point."""
 
 from __future__ import annotations
 

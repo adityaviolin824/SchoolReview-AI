@@ -14,6 +14,12 @@ The implementation currently combines:
 - deterministic report rendering and artifact validation,
 - a small FastAPI and React interface for local testing.
 
+## Design Priorities
+
+- Images are privacy-processed locally before any model request.
+- Model outputs are constrained by schemas and deterministic rules; they do not control counts, status floors, or certification claims.
+- Unclear, contradictory, or failed assessments are routed to human review before a final report is generated.
+
 ## Current Status
 
 This is a working MVP for local testing and technical review, not a production inspection system.
@@ -31,7 +37,7 @@ Implemented:
 - Markdown, HTML, JSON, and PDF report artifacts
 - ReportLab PDF rendering by default, with optional WeasyPrint support
 - FastAPI endpoints for creating runs, uploading images, starting assessment, recording human review, finalizing reports, and downloading artifacts
-- simple React + Vite frontend under `frontend-final/`
+- simple React + Vite frontend under `frontend/`
 - tests for deterministic logic, report rendering, and API behavior
 
 Known limits:
@@ -133,7 +139,7 @@ sequenceDiagram
       final_report_artifact_validation.py
     scripts/
     tests/
-  frontend-final/
+  frontend/
     package.json
     src/
       App.tsx
@@ -190,7 +196,7 @@ uv sync
 Frontend:
 
 ```bash
-cd frontend-final
+cd frontend
 npm install
 ```
 
@@ -235,7 +241,7 @@ runs/api_runs/<run_id>/
 
 ## Run The Frontend
 
-From `frontend-final/`:
+From `frontend/`:
 
 ```bash
 npm run dev
@@ -285,7 +291,7 @@ uv run pytest -q
 Frontend:
 
 ```bash
-cd frontend-final
+cd frontend
 npm run check
 npm run build
 ```

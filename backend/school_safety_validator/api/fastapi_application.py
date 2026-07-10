@@ -1,4 +1,4 @@
-"""FastAPI application factory for the School Safety Validator backend."""
+"""FastAPI application factory for the SchoolReview AI backend."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     """Create the testable FastAPI application."""
 
     app = FastAPI(
-        title="School Safety Validator API",
+        title="SchoolReview AI API",
         version="0.1.0",
         description="Minimal API for staging school inspection images and running the validator pipeline.",
         lifespan=lifespan,

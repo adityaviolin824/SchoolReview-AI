@@ -537,7 +537,7 @@ REPORT_HTML_TEMPLATE = """
   size: A4;
   margin: 17mm 15mm 18mm 15mm;
   @top-left {
-    content: "School Safety Validator";
+    content: "SchoolReview AI";
     color: #7a684f;
     font-size: 8.5pt;
   }

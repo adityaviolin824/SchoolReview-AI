@@ -6,7 +6,7 @@ This file consolidates the coding instructions and project instructions for this
 - `OVERALL_PLAN.md`
 - `PROGRESS_1.md`
 - `PROGRESS_2.md`
-- `school-safety-validator-consolidation-simplified.md`
+- `schoolreview-ai-consolidation-simplified.md`
 - `final-code-review-feedback.md`
 - `ENTIRE-NOTEBOOK-SUMMARY.md`
 
@@ -50,7 +50,7 @@ Use this file as the main guidance document for future coding sessions.
 
 ## Current Project Goal
 
-The project is a School Safety Validator: a focused subset of a larger field inspection validation system.
+The project is SchoolReview AI: a focused subset of a larger field inspection validation system.
 
 The system validates school inspection evidence by comparing images with officer comments. It produces structured assessments that stay grounded in visible evidence.
 
@@ -87,7 +87,7 @@ ENTIRE-NOTEBOOK-SUMMARY.md
 final-code-review-feedback.md
 PROGRESS_1.md
 PROGRESS_2.md
-school-safety-validator-consolidation-simplified.md
+schoolreview-ai-consolidation-simplified.md
 ```
 
 Use `ENTIRE-NOTEBOOK-SUMMARY.md` as the most complete handoff summary for the current notebook.
@@ -649,11 +649,10 @@ These issues were resolved during the notebook iteration:
 1. Read the relevant Markdown context before coding.
 2. For broad project context, read `ENTIRE-NOTEBOOK-SUMMARY.md`.
 3. For the latest notebook review notes, read `final-code-review-feedback.md`.
-4. For older design rationale, read `PROGRESS_1.md`, `PROGRESS_2.md`, and `school-safety-validator-consolidation-simplified.md`.
+4. For older design rationale, read `PROGRESS_1.md`, `PROGRESS_2.md`, and `schoolreview-ai-consolidation-simplified.md`.
 5. Keep changes small and testable.
 6. Validate each increment.
 7. Do not overbuild. Avoid frontend, database, authentication, dashboards, queues, or advanced architecture unless explicitly requested.
 8. Preserve the main design principle: LLMs interpret and write; deterministic code validates, counts, routes, and renders.
 9. Keep final LLM context compact and category-level.
 10. Make deployment improvements in the order: schemas and pure helpers, provider wrappers, graph, category orchestration, aggregation, report rendering, API.
-

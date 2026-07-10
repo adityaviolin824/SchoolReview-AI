@@ -1,4 +1,4 @@
-# School Safety Validator Backend
+# SchoolReview AI Backend
 
 This folder contains the Python backend for the SchoolReview AI prototype. It provides the inspection pipeline, model orchestration, report generation, and a small FastAPI app for local testing.
 

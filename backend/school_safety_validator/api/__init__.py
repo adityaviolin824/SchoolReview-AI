@@ -1,4 +1,4 @@
-"""FastAPI integration for the School Safety Validator backend."""
+"""FastAPI integration for the SchoolReview AI backend."""
 
 from .fastapi_application import app, create_app
 

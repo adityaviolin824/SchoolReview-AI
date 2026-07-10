@@ -45,7 +45,7 @@ class ValidatorSettings:
     request_delay_seconds: float = 5.0
     max_concurrent_requests: int = 1
     confidence_threshold: float = 0.60
-    langsmith_project: str = "school-safety-validator"
+    langsmith_project: str = "schoolreview-ai"
     langsmith_tracing: bool = False
 
 
@@ -59,7 +59,7 @@ def get_settings(
     load_dotenv(dotenv_path=BACKEND_ENV_FILE, override=dotenv_override)
 
     settings = ValidatorSettings(
-        langsmith_project=os.getenv("LANGSMITH_PROJECT", "school-safety-validator"),
+        langsmith_project=os.getenv("LANGSMITH_PROJECT", "schoolreview-ai"),
         langsmith_tracing=os.getenv("LANGSMITH_TRACING", "").strip().lower() == "true",
     )
     if input_root is not None:

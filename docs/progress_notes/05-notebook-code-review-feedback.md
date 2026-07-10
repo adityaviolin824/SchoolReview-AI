@@ -4,8 +4,8 @@
 
 Files reviewed:
 
-- `school-safety-validator-consolidation-simplified.ipynb`
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
 
 Review scope:
 
@@ -30,8 +30,8 @@ No embedded API-key-looking secret was found. Both notebooks only reference API 
 Both notebooks pass non-executing Python syntax compilation across all code cells:
 
 ```text
-school-safety-validator-consolidation-simplified.ipynb: all code cells compiled successfully
-school-safety-validator-langgraph-with-consolidation.ipynb: all code cells compiled successfully
+schoolreview-ai-consolidation-simplified.ipynb: all code cells compiled successfully
+schoolreview-ai-langgraph-with-consolidation.ipynb: all code cells compiled successfully
 ```
 
 So I did not find syntax errors in either notebook.
@@ -53,7 +53,7 @@ Main reasons:
 The original notebook is still useful as an audit/history reference, but I would continue development from:
 
 ```text
-school-safety-validator-consolidation-simplified.ipynb
+schoolreview-ai-consolidation-simplified.ipynb
 ```
 
 ## Findings
@@ -62,7 +62,7 @@ school-safety-validator-consolidation-simplified.ipynb
 
 File:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
 
 Evidence:
 
@@ -84,7 +84,7 @@ Fixed.
 
 Evidence:
 
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 - line 803: `build_human_review_item(...)` accepts completed or failed image state.
 - line 874: failed image JSON includes a real `human_review.item`.
 - line 1303: category run reads `image_result["human_review"].get("item")`.
@@ -98,7 +98,7 @@ Keep the simplified behavior. Do not carry the original failed-job queue logic f
 
 File:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
 
 Evidence:
 
@@ -117,7 +117,7 @@ Improved.
 
 Evidence:
 
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 - line 1126: `def classify_category(...)`
 - line 1145: high severity still returns `urgent_review`
 - line 1147: failed or unclear evidence returns `insufficient_evidence` before medium/low
@@ -130,8 +130,8 @@ Keep the simplified logic. It is a better safety-oriented default.
 
 Files:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 
 Evidence:
 
@@ -172,8 +172,8 @@ I recommend the first option because the image still has a model assessment, but
 
 Files:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 
 Evidence:
 
@@ -204,7 +204,7 @@ This would enforce the rule outside the prompt instead of relying only on model 
 
 File:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
 
 Evidence:
 
@@ -222,7 +222,7 @@ Fixed.
 
 Evidence:
 
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 - line 1372: `def load_category_outputs(...)`
 - line 1392: raises `FileNotFoundError` if no category outputs are loaded.
 
@@ -234,8 +234,8 @@ Keep the simplified behavior.
 
 Files:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 
 Evidence:
 
@@ -253,7 +253,7 @@ Practical fix:
 Use a default project name or read with `os.getenv`:
 
 ```python
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "school-safety-validator")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "schoolreview-ai")
 ```
 
 Then use:
@@ -268,8 +268,8 @@ This avoids requiring LangSmith configuration for local runs.
 
 Files:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 
 Evidence:
 
@@ -300,7 +300,7 @@ This is a behavior change. It is worth testing against a few known examples befo
 
 File:
 
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 
 Evidence:
 
@@ -325,8 +325,8 @@ This is already mostly documented in `PROGRESS_2.md`. Keep that distinction cons
 
 Files:
 
-- `school-safety-validator-langgraph-with-consolidation.ipynb`
-- `school-safety-validator-consolidation-simplified.ipynb`
+- `schoolreview-ai-langgraph-with-consolidation.ipynb`
+- `schoolreview-ai-consolidation-simplified.ipynb`
 
 Evidence:
 

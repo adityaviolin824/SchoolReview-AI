@@ -1,6 +1,6 @@
 # Project Progress Notes
 
-This folder contains selected historical notes from the development of the SchoolReview AI / School Safety Validator project.
+This folder contains selected historical notes from the development of SchoolReview AI.
 
 These files are not setup instructions. They are included to show how the project evolved from notebook experiments into a modular backend, API, and simple frontend.
 

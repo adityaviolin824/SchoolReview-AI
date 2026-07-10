@@ -1,4 +1,4 @@
-"""Run the School Safety Validator pipeline from a request JSON file."""
+"""Run the SchoolReview AI pipeline from a request JSON file."""
 
 from __future__ import annotations
 
