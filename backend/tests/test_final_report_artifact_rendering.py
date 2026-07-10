@@ -86,6 +86,8 @@ def metadata(tmp_path: Path) -> dict:
         "total_images": 1,
         "deterministic_status_floor": "insufficient_evidence",
         "key_risks": ["Visible classroom maintenance concern."],
+        "report_id": "demo-run",
+        "evidence_filename_map": {"classroom_001.jpg": "uploaded_classroom_photo.jpg"},
     }
 
 
@@ -132,7 +134,19 @@ def test_enterprise_report_renderers_include_risks_scope_and_actions(tmp_path: P
     assert "Key Risks" in markdown_text
     assert "Priority Actions" in markdown_text
     assert "Section-wise Findings" in markdown_text
+    assert "AI-Assisted Draft - Requires Qualified Review" in markdown_text
     assert "Overall status" not in markdown_text
+    assert "Insufficient Evidence" not in markdown_text
+    assert "Insufficient Evidence" not in html_text
+    assert "Validated Draft" not in markdown_text
+    assert "Validated Draft" not in html_text
+    assert "Enterprise inspection report" not in html_text
+    assert "Review Required" in markdown_text
+    assert "Review Required" in html_text
+    assert "uploaded_classroom_photo.jpg" in markdown_text
+    assert "uploaded_classroom_photo.jpg" in html_text
+    assert str(tmp_path) not in markdown_text
+    assert str(tmp_path) not in html_text
     assert "Categories processed" not in markdown_text
     assert "Human review items" not in markdown_text
     assert "Generated at" not in markdown_text
@@ -144,6 +158,8 @@ def test_enterprise_report_renderers_include_risks_scope_and_actions(tmp_path: P
     assert "Generated at" not in html_text
     assert "Priority Actions" in html_text
     assert "Section-wise Findings" in html_text
+    assert "Hidden defects, non-visible areas, image-quality limitations, and missing evidence may affect the findings." in markdown_text
+    assert "Hidden defects, non-visible areas, image-quality limitations, and missing evidence may affect the findings." in html_text
 
 
 def test_pdf_renderer_uses_reportlab_by_default(monkeypatch, tmp_path: Path) -> None:

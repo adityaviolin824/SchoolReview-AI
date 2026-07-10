@@ -1,29 +1,94 @@
 .git
+.agents/
+.codex/
+
+# Secrets and local environment
+.env
+.env.*
+**/.env
+**/.env.*
+*.key
+*.pem
+*.p12
+
+# OS and editor files
 .DS_Store
 **/.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Python caches, test artifacts, and local environments
 **/__pycache__/
+**/*.py[cod]
+**/*$py.class
 **/.pytest_cache/
 **/.mypy_cache/
 **/.ruff_cache/
-**/.env
+**/.hypothesis/
+**/.coverage
+**/.coverage.*
+**/coverage.xml
+**/htmlcov/
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/env/
+**/.python-version
 
+# Jupyter notebooks and checkpoints
+**/.ipynb_checkpoints/
+**/*.ipynb
+
+# Root-level local docs, plans, and handoff notes
+/*.md
+!/README.md
+!/AGENTS.md
+
+# Backend files not needed in the runtime image
 backend/.env
+backend/.env.*
 backend/.venv/
-backend/backend-final-code-review.md
-backend/RUNNING_INSTRUCTIONS.md
+backend/*.md
+!backend/README.md
 backend/reference_notebook/
 backend/sample_data/
 backend/school_validation_outputs/
 backend/static/frontend/
 backend/tests/
 
+# Runtime artifacts and local datasets
+logs/
+tmp/
+temp/
+*.log
+*.sqlite
+*.sqlite3
+DATA/
+school/
+runs/
+school_validation_outputs/
+
+# Frontend dependencies, build outputs, and logs
+node_modules/
 frontend-final/node_modules
 frontend-final/node_modules/
 frontend-final/dist/
 frontend-testing/
 frontend-testing/node_modules
 frontend-testing/node_modules/
+**/.next/
+**/out/
+**/dist/
+**/build/
+**/coverage/
+**/*.tsbuildinfo
+**/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
+# Non-runtime project documentation
 docs/
-runs/
-school_validation_outputs/

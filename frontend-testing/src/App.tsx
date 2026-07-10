@@ -46,7 +46,7 @@ function createInitialSectionForms(): SectionFormStateMap {
     forms[name] = {
       selected: name === "classroom",
       sectionComment: `${formatSectionName(name)} inspection comments.`,
-      imageComment: "Visible condition image.",
+      imageComment: "Enter comments for image here",
       selectedFiles: [],
       uploadedImages: [],
     };

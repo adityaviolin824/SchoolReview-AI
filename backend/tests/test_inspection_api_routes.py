@@ -14,6 +14,7 @@ from school_safety_validator.api import fastapi_application
 from school_safety_validator.api import inspection_api_routes
 from school_safety_validator.api.fastapi_application import create_app
 from school_safety_validator.inspection_data_models import SchoolInspectionResult
+from school_safety_validator.inspection_runtime_settings import CATEGORY_NAMES
 
 
 def png_bytes() -> bytes:
@@ -543,6 +544,9 @@ def test_api_run_supports_multiple_sections_and_human_review_decisions(monkeypat
 
     assert status_payload["status"] == "awaiting_human_review"
     assert status_payload["processed_sections"] == ["classroom", "washroom"]
+    assert status_payload["not_inspected_sections"] == [
+        category_name for category_name in CATEGORY_NAMES if category_name not in {"classroom", "washroom"}
+    ]
     assert status_payload["total_images"] == 2
     assert status_payload["human_review_required"] is True
     assert [item["review_id"] for item in status_payload["human_review_items"]] == [

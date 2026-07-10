@@ -49,6 +49,7 @@ code-simplification-advice.md
 CURRENT_STATUS.md
 overall_app_review.md
 backend/running_instructions_v2.md
+school_safety_report_improvement_instructions.md
 
 # FastAPI/runtime artifacts
 *.log

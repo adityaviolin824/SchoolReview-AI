@@ -32,6 +32,16 @@ REPORT_IMAGE_MIME_TYPES = {
 REPORTLAB_USABLE_WIDTH_MM = 170
 REPORTLAB_CATEGORY_TABLE_WIDTHS_MM = [25, 42, 17, 14, 19, 14, 39]
 REPORTLAB_PRIORITY_TABLE_WIDTHS_MM = [20, 24, 66, 45, 15]
+STATUS_LABEL_OVERRIDES = {
+    "insufficient_evidence": "Review Required",
+}
+REPORT_STATUS_LABEL = "AI-Assisted Draft - Requires Qualified Review"
+STANDARD_LIMITATIONS = [
+    "This report is based only on the provided images, comments, and automated validation outputs.",
+    "It does not certify safety, code compliance, structural soundness, electrical safety, hygiene, or serviceability.",
+    "Hidden defects, non-visible areas, image-quality limitations, and missing evidence may affect the findings.",
+    "Qualified personnel must review the evidence before decisions, repairs, closures, or compliance actions are made.",
+]
 
 
 def find_report_cover_image() -> Path | None:
@@ -60,7 +70,7 @@ def image_path_to_data_url(image_path: Path | None) -> str:
 def status_label(value: str) -> str:
     """Convert schema labels into report-friendly labels."""
 
-    return value.replace("_", " ").title()
+    return STATUS_LABEL_OVERRIDES.get(value, value.replace("_", " ").title())
 
 
 def markdown_list(items: list[str]) -> str:
@@ -82,12 +92,13 @@ def build_report_appendix(metadata: dict) -> dict:
     """Return the machine-readable report appendix."""
 
     return {
-        "final_aggregation_json_path": metadata["final_aggregation_json_path"],
-        "report_content_json_path": metadata["report_content_json_path"],
+        "report_id": metadata.get("report_id", ""),
+        "final_aggregation_json": Path(metadata["final_aggregation_json_path"]).name,
+        "report_content_json": Path(metadata["report_content_json_path"]).name,
         "models": metadata["models"],
         "not_inspected_categories": metadata["not_inspected_categories"],
         "total_images": metadata["total_images"],
-        "deterministic_status_floor": metadata["deterministic_status_floor"],
+        "deterministic_status_floor": status_label(metadata["deterministic_status_floor"]),
         "human_review_completed": metadata.get("human_review_completed", False),
         "human_review_decisions": metadata.get("human_review_decisions", []),
     }
@@ -97,6 +108,54 @@ def clean_text_items(items: list[str]) -> list[str]:
     """Return non-empty stripped text items."""
 
     return [item.strip() for item in items if item and item.strip()]
+
+
+def build_limitations(items: list[str]) -> list[str]:
+    """Return limitations with the standard visual-inspection caveats always present."""
+
+    limitations = clean_text_items(items)
+    existing = {item.lower() for item in limitations}
+    for limitation in STANDARD_LIMITATIONS:
+        if limitation.lower() not in existing:
+            limitations.append(limitation)
+    return limitations
+
+
+def display_filename(value: str, evidence_filename_map: dict[str, str] | None = None) -> str:
+    """Return a report-safe evidence filename without exposing internal folders."""
+
+    cleaned_value = str(value or "").strip()
+    if not cleaned_value:
+        return ""
+    evidence_filename_map = evidence_filename_map or {}
+    mapped_value = evidence_filename_map.get(cleaned_value, cleaned_value)
+    return Path(str(mapped_value)).name
+
+
+def display_filenames(values: list[str], evidence_filename_map: dict[str, str] | None = None) -> list[str]:
+    """Return report-safe evidence filenames for a list of references."""
+
+    return clean_text_items([display_filename(value, evidence_filename_map) for value in values])
+
+
+def source_file_label(item: dict) -> str:
+    """Return a source label without exposing an internal absolute path."""
+
+    source_name = Path(str(item.get("path", ""))).name
+    category = str(item.get("category", "")).strip()
+    source_type = str(item.get("source_type", "")).strip()
+    if source_type:
+        return f"{category}: {source_name} ({source_type})"
+    return f"{category}: {source_name}"
+
+
+def display_report_id(report_id: str) -> str:
+    """Return a compact report ID for page display."""
+
+    cleaned_report_id = str(report_id or "").strip()
+    if len(cleaned_report_id) > 16:
+        return cleaned_report_id[:12]
+    return cleaned_report_id
 
 
 def build_category_table_rows(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
@@ -148,19 +207,25 @@ def priority_class(value: str) -> str:
     }.get(value, "priority-low")
 
 
-def evidence_summary(section: object, packet: dict) -> str:
+def evidence_summary(section: object, packet: dict, evidence_filename_map: dict[str, str] | None = None) -> str:
     """Return compact evidence text from already-validated category data."""
 
     evidence_refs = clean_text_items(list(getattr(section, "evidence_refs", [])))
     key_findings = packet.get("key_findings", [])
     if evidence_refs:
-        return ", ".join(evidence_refs[:3])
+        return ", ".join(display_filenames(evidence_refs[:3], evidence_filename_map))
     if key_findings:
-        return ", ".join(clean_text_items([item.get("image_id", "") for item in key_findings])[:3])
+        return ", ".join(
+            display_filenames(clean_text_items([item.get("image_id", "") for item in key_findings])[:3], evidence_filename_map)
+        )
     return "Category-level evidence packet"
 
 
-def build_priority_action_rows(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
+def build_priority_action_rows(
+    content: FinalReportContent,
+    category_packets: list[dict],
+    evidence_filename_map: dict[str, str] | None = None,
+) -> list[dict]:
     """Build deterministic action rows from validated category sections."""
 
     packet_by_category = {packet["category"]: packet for packet in category_packets}
@@ -176,20 +241,40 @@ def build_priority_action_rows(content: FinalReportContent, category_packets: li
                     "category": section.category,
                     "issue": section.summary,
                     "action": action,
-                    "evidence": evidence_summary(section, packet),
+                    "evidence": evidence_summary(section, packet, evidence_filename_map),
                     "review_required": review_required,
                 }
             )
     return rows
 
 
-def build_category_view_sections(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
+def build_category_view_sections(
+    content: FinalReportContent,
+    category_packets: list[dict],
+    evidence_filename_map: dict[str, str] | None = None,
+) -> list[dict]:
     """Prepare deterministic category display fields without changing semantics."""
 
     packet_by_category = {packet["category"]: packet for packet in category_packets}
     sections = []
     for section in content.category_sections:
         packet = packet_by_category[section.category]
+        key_findings = []
+        for finding in packet.get("key_findings", []):
+            key_findings.append(
+                {
+                    **finding,
+                    "image_id": display_filename(finding.get("image_id", ""), evidence_filename_map),
+                }
+            )
+        documentation_gaps = []
+        for gap in packet.get("documentation_gaps", []):
+            documentation_gaps.append(
+                {
+                    **gap,
+                    "image_id": display_filename(gap.get("image_id", ""), evidence_filename_map),
+                }
+            )
         sections.append(
             {
                 "category": section.category,
@@ -203,9 +288,9 @@ def build_category_view_sections(content: FinalReportContent, category_packets: 
                 "image_count": packet["image_count"],
                 "human_review_required": packet["human_review_required"],
                 "issue_counts": packet["issue_counts"],
-                "key_findings": packet.get("key_findings", []),
-                "documentation_gaps": packet.get("documentation_gaps", []),
-                "evidence_refs": clean_text_items(section.evidence_refs),
+                "key_findings": key_findings,
+                "documentation_gaps": documentation_gaps,
+                "evidence_refs": display_filenames(section.evidence_refs, evidence_filename_map),
                 "recommended_actions": clean_text_items(section.recommended_actions),
             }
         )
@@ -228,10 +313,11 @@ def build_global_action_groups(content: FinalReportContent) -> list[dict]:
 def build_human_review_decision_rows(metadata: dict) -> list[dict]:
     """Return exact human-review decisions for deterministic report display."""
 
+    evidence_filename_map = metadata.get("evidence_filename_map", {})
     return [
         {
             "category": str(decision.get("category_name", "")),
-            "image_id": str(decision.get("image_id", "")),
+            "image_id": display_filename(str(decision.get("image_id", "")), evidence_filename_map),
             "status": str(decision.get("status", "")),
             "notes": str(decision.get("notes", "")),
         }
@@ -243,6 +329,7 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
     """Build deterministic display data for Markdown, HTML, and PDF renderers."""
 
     not_inspected_categories = clean_text_items(metadata.get("not_inspected_categories", []))
+    evidence_filename_map = metadata.get("evidence_filename_map", {})
     human_review_items = sum(1 for packet in category_packets if packet.get("human_review_required"))
     issue_counts = {"high": 0, "medium": 0, "low": 0}
     for packet in category_packets:
@@ -251,7 +338,9 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
 
     return {
         "title": content.title,
-        "report_status_label": "Provisional" if content.provisional else "Validated Draft",
+        "report_status_label": REPORT_STATUS_LABEL,
+        "report_id": metadata.get("report_id", ""),
+        "report_id_label": display_report_id(metadata.get("report_id", "")),
         "provisional": content.provisional,
         "not_inspected_categories": not_inspected_categories,
         "total_images": metadata["total_images"],
@@ -260,17 +349,18 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
         "human_review_decision_rows": build_human_review_decision_rows(metadata),
         "issue_counts": issue_counts,
         "deterministic_status_floor": metadata["deterministic_status_floor"],
+        "deterministic_status_floor_label": status_label(metadata["deterministic_status_floor"]),
         "category_table": build_category_table_rows(content, category_packets),
-        "category_sections": build_category_view_sections(content, category_packets),
-        "priority_action_rows": build_priority_action_rows(content, category_packets),
+        "category_sections": build_category_view_sections(content, category_packets, evidence_filename_map),
+        "priority_action_rows": build_priority_action_rows(content, category_packets, evidence_filename_map),
         "global_action_groups": build_global_action_groups(content),
         "executive_summary": clean_text_items(content.executive_summary),
         "key_risks": clean_text_items(metadata.get("key_risks", [])),
         "scope_and_inputs": clean_text_items(content.scope_and_inputs),
         "human_review_notes": clean_text_items(content.human_review_notes),
-        "limitations": clean_text_items(content.limitations),
+        "limitations": build_limitations(content.limitations),
         "disclaimer": content.disclaimer,
-        "source_files": metadata["category_output_sources"],
+        "source_files": [source_file_label(item) for item in metadata["category_output_sources"]],
         "appendix": build_report_appendix(metadata),
     }
 
@@ -342,10 +432,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             f"Recommended actions:\n{markdown_list(section['recommended_actions'])}"
         )
 
-    source_lines = [
-        f"- {item['category']}: {item['path']} ({item['last_modified_utc']})"
-        for item in metadata["category_output_sources"]
-    ]
+    source_lines = [f"- {item}" for item in view["source_files"]]
     decision_lines = [
         f"- {row['category']} / {row['image_id']}: {row['status']} - {row['notes'] or 'No reviewer notes.'}"
         for row in view["human_review_decision_rows"]
@@ -360,9 +447,10 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             f"# {content.title}",
             "## Status Dashboard\n\n"
             f"- Report status: {view['report_status_label']}\n"
+            f"- Report ID: {view['report_id_label'] or 'Not available'}\n"
             f"- Categories not inspected: {len(view['not_inspected_categories'])}\n"
             f"- Total images: {view['total_images']}\n"
-            f"- Deterministic status floor: {metadata['deterministic_status_floor']}",
+            f"- Deterministic status floor: {view['deterministic_status_floor_label']}",
             "## Human Review Notice\n\n"
             + (
                 "Human review was completed before this final report was generated."
@@ -370,7 +458,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
                 else (
                     "This report is provisional and requires human review before decisions are made."
                     if content.provisional or view["human_review_items"]
-                    else "No human review items were recorded in the validated report content."
+                    else "No automated human-review escalation was triggered."
                 )
             ),
             "## Executive Summary\n\n" + markdown_list(view["executive_summary"]),
@@ -378,7 +466,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             "## Category Coverage\n\n"
             f"Not inspected categories:\n{markdown_list(view['not_inspected_categories'])}\n\n"
             f"Scope notes:\n{markdown_list(view['scope_and_inputs'])}",
-            "## Input Provenance\n\n" + "\n".join(source_lines),
+            "## Source References\n\n" + "\n".join(source_lines),
             "## Category Summary Table\n\n" + "\n".join(category_rows),
             "## Priority Actions\n\n" + ("\n".join(action_rows) if view["priority_action_rows"] else "- None recorded."),
             "## Global Action Lists\n\n"
@@ -405,6 +493,7 @@ REPORT_HTML_TEMPLATE = """
 <title>{{ view.title }}</title>
 <style>
 @page {
+  background: #fbfcee;
   size: A4;
   margin: 17mm 15mm 18mm 15mm;
   @top-left {
@@ -430,8 +519,8 @@ REPORT_HTML_TEMPLATE = """
   @bottom-right { content: ""; }
 }
 * { box-sizing: border-box; }
-html { color: #33291f; font-family: "Aptos", "Avenir Next", "Segoe UI", "Noto Sans", Arial, sans-serif; font-size: 10.2pt; line-height: 1.48; }
-body { background: #fbf8ef; margin: 0; }
+html { background: #fbfcee; color: #33291f; font-family: "Aptos", "Avenir Next", "Segoe UI", "Noto Sans", Arial, sans-serif; font-size: 10.2pt; line-height: 1.48; }
+body { background: #fbfcee; margin: 0; }
 h1, h2, h3 { color: #3f331f; line-height: 1.18; margin: 0; }
 h1 { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
 h2 { border-bottom: 1px solid #c9b27c; color: #4f4f2a; font-size: 15pt; margin: 9mm 0 4mm; padding-bottom: 2mm; page-break-after: avoid; }
@@ -445,9 +534,9 @@ tr { page-break-inside: avoid; }
 th, td { border: 1px solid #d8c8a7; padding: 6px 7px; text-align: left; vertical-align: top; }
 th { background: #efe4c8; color: #4d4028; font-size: 8.5pt; letter-spacing: .03em; text-transform: uppercase; }
 td { font-size: 9.2pt; }
-tbody tr:nth-child(even) { background: #f7f0df; }
+tbody tr:nth-child(even) { background: #f5f7df; }
 code, pre { font-family: Consolas, "Courier New", monospace; font-size: 8.4pt; }
-pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; padding: 8px; white-space: pre-wrap; }
+pre { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 6px; padding: 8px; white-space: pre-wrap; }
 .cover { background: linear-gradient(135deg, #3c2c1f 0%, #596239 58%, #9a6b20 100%); color: #fffaf0; min-height: 297mm; padding: 21mm; page: cover; page-break-after: always; position: relative; }
 .cover-kicker { color: #f0c76a; font-size: 9pt; font-weight: 700; letter-spacing: .11em; margin-bottom: 7mm; text-transform: uppercase; }
 .cover h1 { color: #fff8e8; font-size: 30pt; max-width: 160mm; }
@@ -456,8 +545,8 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 .cover-panel { background: rgba(58, 43, 29, .28); border: 1px solid rgba(255,244,214,.36); border-radius: 8px; padding: 5mm; }
 .cover-label { color: #f4d58d; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .cover-value { color: #fffaf0; font-size: 12pt; font-weight: 700; margin-top: 2mm; }
-.cover-image { background: rgba(255,250,240,.1); border: 1px solid rgba(255,244,214,.28); border-radius: 8px; margin-top: 10mm; padding: 4mm; }
-.cover-image img { border-radius: 5px; display: block; width: 100%; }
+.cover-image { background: rgba(255,250,240,.1); border: 1px solid rgba(255,244,214,.28); border-radius: 8px; height: 105mm; margin-top: 10mm; overflow: hidden; padding: 0; }
+.cover-image img { display: block; height: 100%; object-fit: cover; width: 100%; }
 .cover-footer { bottom: 17mm; color: #f5e8c8; font-size: 8.8pt; left: 21mm; position: absolute; right: 21mm; }
 .report-header { border-bottom: 3px solid #7b6f38; margin-bottom: 6mm; padding-bottom: 4mm; }
 .report-header h1 { font-size: 21pt; margin-bottom: 2mm; }
@@ -473,19 +562,19 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 .priority-medium { background: #f7ebc8; color: #725016; }
 .priority-low { background: #e8edd8; color: #4f5e2f; }
 .status-strip { align-items: stretch; display: grid; gap: 4mm; grid-template-columns: repeat(4, 1fr); margin: 5mm 0 6mm; }
-.metric-card { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 8px; padding: 4mm; }
+.metric-card { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 8px; padding: 4mm; }
 .metric-label { color: #7a684f; font-size: 8pt; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .metric-value { color: #3f331f; font-size: 16pt; font-weight: 700; margin-top: 2mm; }
 .metric-note { color: #7a684f; font-size: 8.5pt; margin-top: 1.5mm; }
 .notice { border-left: 5px solid #9a6b20; background: #f7ebc8; border-radius: 7px; margin: 5mm 0 7mm; padding: 4mm 5mm; }
 .notice strong { color: #684515; }
 .coverage-grid { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; }
-.coverage-box, .section-card, .appendix-card { background: #fffdf7; border: 1px solid #d8c8a7; border-radius: 8px; padding: 4mm; }
+.coverage-box, .section-card, .appendix-card { background: #fffff5; border: 1px solid #d8c8a7; border-radius: 8px; padding: 4mm; }
 .section-card { margin: 0 0 5mm; page-break-inside: avoid; }
 .section-header { align-items: center; border-bottom: 1px solid #ded1b1; display: flex; justify-content: space-between; margin-bottom: 3mm; padding-bottom: 2mm; }
 .section-meta { color: #7a684f; font-size: 8.8pt; margin-top: 1mm; }
 .issue-pills { display: flex; gap: 2mm; margin: 3mm 0; }
-.pill { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 999px; color: #4d4028; font-size: 8.3pt; padding: 2px 7px; }
+.pill { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 999px; color: #4d4028; font-size: 8.3pt; padding: 2px 7px; }
 .two-column { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; }
 .finding-list { margin-top: 2mm; }
 .finding-item { border-left: 3px solid #b7a267; margin: 0 0 3mm; padding-left: 3mm; }
@@ -496,10 +585,11 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 </head>
 <body>
 <section class="cover">
-  <div class="cover-kicker">AI-assisted school condition validator</div>
+  <div class="cover-kicker">School condition review</div>
   <h1>{{ view.title }}</h1>
-  <p class="cover-subtitle">Enterprise inspection report generated from validated category evidence packets and deterministic rendering checks.</p>
+  <p class="cover-subtitle">A simple summary of what was visible in the submitted inspection images. This is not a safety or compliance certificate.</p>
   <div class="cover-grid">
+    <div class="cover-panel"><div class="cover-label">Report ID</div><div class="cover-value">{{ view.report_id_label or "Not available" }}</div></div>
     <div class="cover-panel"><div class="cover-label">Report status</div><div class="cover-value">{{ view.report_status_label }}</div></div>
     <div class="cover-panel"><div class="cover-label">Evidence images</div><div class="cover-value">{{ view.total_images }}</div></div>
   </div>
@@ -509,7 +599,7 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 <main>
 <div class="report-header">
   <h1>{{ view.title }}</h1>
-  <p class="meta-line">AI-assisted visual inspection summary | Deterministic status floor: {{ view.deterministic_status_floor }}</p>
+  <p class="meta-line">AI-assisted visual inspection summary | Deterministic status floor: {{ view.deterministic_status_floor_label }}</p>
 </div>
 <div class="status-strip">
   <div class="metric-card"><div class="metric-label">Report status</div><div class="metric-value">{{ view.report_status_label }}</div><div class="metric-note">Human review before decisions</div></div>
@@ -520,6 +610,8 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 <div class="notice"><strong>Human review completed.</strong> Human-review decisions were recorded before this final report was generated.</div>
 {% elif view.provisional or view.human_review_items %}
 <div class="notice"><strong>Human review required.</strong> This report is provisional and requires human review before decisions are made. Review-required category count: {{ view.human_review_items }}.</div>
+{% else %}
+<div class="notice"><strong>Review status.</strong> No automated human-review escalation was triggered. Qualified personnel must still review this report before decisions are made.</div>
 {% endif %}
 <h2>Executive Summary</h2>
 <ul>{% for item in view.executive_summary %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
@@ -529,8 +621,8 @@ pre { background: #f7f0df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 <div class="coverage-box"><h3>Not inspected categories</h3><ul>{% for item in view.not_inspected_categories %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul></div>
 <h2>Scope and Inputs</h2>
 <ul>{% for item in view.scope_and_inputs %}<li>{{ item }}</li>{% else %}<li>None recorded.</li>{% endfor %}</ul>
-<h2>Input Provenance</h2>
-<ul>{% for item in view.source_files %}<li><code>{{ item.category }}</code>: <code>{{ item.path }}</code> ({{ item.last_modified_utc }})</li>{% endfor %}</ul>
+<h2>Source References</h2>
+<ul>{% for item in view.source_files %}<li>{{ item }}</li>{% endfor %}</ul>
 <h2>Category Summary Table</h2>
 <table><thead><tr><th>Category</th><th>Status</th><th>Images</th><th>High</th><th>Medium</th><th>Low</th><th>Human Review</th></tr></thead><tbody>
 {% for row in view.category_table %}<tr><td><code>{{ row.category }}</code></td><td>{{ row.status }}</td><td>{{ row.image_count }}</td><td>{{ row.high }}</td><td>{{ row.medium }}</td><td>{{ row.low }}</td><td>{{ row.human_review }}</td></tr>{% endfor %}
@@ -618,6 +710,37 @@ def reportlab_col_widths(widths_mm: list[float]) -> list[float]:
     return [width * mm for width in widths_mm]
 
 
+def reportlab_cover_image(image_path: Path, target_width: float, target_height: float):
+    """Return a cropped cover image flowable that fills the target rectangle."""
+
+    from PIL import Image as PILImage
+    from reportlab.platypus import Image as RLImage
+
+    with PILImage.open(image_path) as source_image:
+        image = source_image.convert("RGB")
+        source_width, source_height = image.size
+        target_ratio = target_width / target_height
+        source_ratio = source_width / source_height
+
+        if source_ratio > target_ratio:
+            cropped_width = int(source_height * target_ratio)
+            left = (source_width - cropped_width) // 2
+            crop_box = (left, 0, left + cropped_width, source_height)
+        else:
+            cropped_height = int(source_width / target_ratio)
+            top = (source_height - cropped_height) // 2
+            crop_box = (0, top, source_width, top + cropped_height)
+
+        cropped_image = image.crop(crop_box)
+        image_buffer = io.BytesIO()
+        cropped_image.save(image_buffer, format="JPEG", quality=92)
+        image_buffer.seek(0)
+
+    cover_image = RLImage(image_buffer, width=target_width, height=target_height)
+    cover_image._school_validator_image_buffer = image_buffer
+    return cover_image
+
+
 def reportlab_table_rows(rows: list[list[object]], styles: dict) -> list[list[object]]:
     """Wrap table values in Paragraphs so long text cannot force page overflow."""
 
@@ -638,13 +761,11 @@ def render_report_pdf_with_reportlab(
 ) -> None:
     """Render a deterministic PDF with ReportLab when WeasyPrint is unavailable."""
 
-    from PIL import Image as PILImage
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import Image as RLImage
     from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     styles = getSampleStyleSheet()
@@ -737,16 +858,21 @@ def render_report_pdf_with_reportlab(
 
     story = [
         Spacer(1, 7 * mm),
-        Paragraph("AI-ASSISTED SCHOOL CONDITION VALIDATOR", styles["CoverKicker"]),
+        Paragraph("SCHOOL CONDITION REVIEW", styles["CoverKicker"]),
         Paragraph(reportlab_text(content.title), styles["CoverTitle"]),
         Paragraph(
-            "A cautious visual inspection summary generated from category-level evidence packets and deterministic validation checks.",
+            "A simple summary of what was visible in the submitted inspection images. "
+            "This is not a safety or compliance certificate.",
             styles["CoverText"],
         ),
         Spacer(1, 7 * mm),
         Table(
             [
                 [
+                    [
+                        Paragraph("REPORT ID", styles["CoverMetricLabel"]),
+                        Paragraph(reportlab_text(view["report_id_label"] or "Not available"), styles["CoverMetricValue"]),
+                    ],
                     [
                         Paragraph("REPORT STATUS", styles["CoverMetricLabel"]),
                         Paragraph(reportlab_text(view["report_status_label"]), styles["CoverMetricValue"]),
@@ -757,7 +883,7 @@ def render_report_pdf_with_reportlab(
                     ],
                 ],
             ],
-            colWidths=[62 * mm, 62 * mm],
+            colWidths=[56 * mm, 56 * mm, 56 * mm],
             rowHeights=[20 * mm],
             hAlign="LEFT",
             style=[
@@ -776,21 +902,21 @@ def render_report_pdf_with_reportlab(
 
     cover_image_path = Path(metadata["cover_image_path"]) if metadata.get("cover_image_path") else None
     if cover_image_path and cover_image_path.exists():
-        image_width_px, image_height_px = PILImage.open(cover_image_path).size
-        cover_width = 112 * mm
-        cover_height = cover_width * image_height_px / image_width_px
-        cover_image = RLImage(str(cover_image_path), width=cover_width, height=cover_height)
+        cover_width = 168 * mm
+        cover_height = 105 * mm
+        cover_image = reportlab_cover_image(cover_image_path, cover_width, cover_height)
         cover_image.hAlign = "CENTER"
         image_frame = Table(
             [[cover_image]],
-            colWidths=[126 * mm],
+            colWidths=[cover_width],
+            rowHeights=[cover_height],
             style=[
                 ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#626744")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
             ],
         )
         story.extend([image_frame, Spacer(1, 4 * mm)])
@@ -802,7 +928,7 @@ def render_report_pdf_with_reportlab(
             Paragraph("Overall Verdict", styles["Heading2"]),
             Paragraph(f"Provisional: {'Yes' if content.provisional else 'No'}", styles["BodyText"]),
             Paragraph(
-                f"Deterministic status floor: {reportlab_text(metadata['deterministic_status_floor'])}",
+                f"Deterministic status floor: {reportlab_text(view['deterministic_status_floor_label'])}",
                 styles["BodyText"],
             ),
         ]
@@ -822,6 +948,13 @@ def render_report_pdf_with_reportlab(
                 styles["BodyText"],
             )
         )
+    else:
+        story.append(
+            Paragraph(
+                "No automated human-review escalation was triggered. Qualified personnel must still review this report before decisions are made.",
+                styles["BodyText"],
+            )
+        )
 
     story.extend(
         [
@@ -834,14 +967,8 @@ def render_report_pdf_with_reportlab(
             *reportlab_bullet_list(view["not_inspected_categories"], styles),
             Paragraph("Scope and Inputs", styles["Heading2"]),
             *reportlab_bullet_list(content.scope_and_inputs, styles),
-            Paragraph("Input Provenance", styles["Heading2"]),
-            *reportlab_bullet_list(
-                [
-                    f"{item['category']}: {item['path']} ({item['last_modified_utc']})"
-                    for item in metadata["category_output_sources"]
-                ],
-                styles,
-            ),
+            Paragraph("Source References", styles["Heading2"]),
+            *reportlab_bullet_list(view["source_files"], styles),
         ]
     )
 
@@ -929,6 +1056,7 @@ def render_report_pdf_with_reportlab(
 
     story.append(Paragraph("Category-by-Category Findings", styles["Heading2"]))
     for section in content.category_sections:
+        view_section = next(item for item in view["category_sections"] if item["category"] == section.category)
         story.extend(
             [
                 Paragraph(reportlab_text(section.category), styles["Heading3"]),
@@ -936,14 +1064,14 @@ def render_report_pdf_with_reportlab(
                 Paragraph(f"Priority: {reportlab_text(section.priority)}", styles["BodyText"]),
                 Paragraph(reportlab_text(section.summary), styles["BodyText"]),
                 Paragraph("Evidence references", styles["Heading4"]),
-                *reportlab_bullet_list(section.evidence_refs, styles),
+                *reportlab_bullet_list(view_section["evidence_refs"], styles),
                 Paragraph("Recommended actions", styles["Heading4"]),
                 *reportlab_bullet_list(section.recommended_actions, styles),
             ]
         )
 
     story.append(Paragraph("Limitations and Disclaimer", styles["Heading2"]))
-    story.extend(reportlab_bullet_list(content.limitations, styles))
+    story.extend(reportlab_bullet_list(view["limitations"], styles))
     story.append(Paragraph(reportlab_text(content.disclaimer), styles["BodyText"]))
     story.append(Paragraph("Machine-Readable Appendix", styles["Heading2"]))
     story.append(
@@ -977,7 +1105,19 @@ def render_report_pdf_with_reportlab(
         canvas.rect(0, 0, page_width, 42 * mm, stroke=0, fill=1)
         canvas.restoreState()
 
-    document.build(story, onFirstPage=draw_cover_background)
+    def draw_page_background(canvas, _document) -> None:
+        canvas.saveState()
+        page_width, page_height = A4
+        canvas.setFillColor(colors.HexColor("#fbfcee"))
+        canvas.rect(0, 0, page_width, page_height, stroke=0, fill=1)
+        canvas.setFillColor(colors.HexColor("#7a684f"))
+        canvas.setFont("Helvetica", 8)
+        report_id = view["report_id_label"] or "report"
+        canvas.drawString(20 * mm, 11 * mm, f"Report ID: {report_id}")
+        canvas.drawRightString(page_width - 20 * mm, 11 * mm, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=draw_cover_background, onLaterPages=draw_page_background)
 
 
 def render_report_pdf(

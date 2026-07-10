@@ -113,6 +113,7 @@ def build_report_metadata(
     output_root = final_report_output_root(settings)
     cover_image_path = find_report_cover_image()
     return {
+        "report_id": settings.output_root.name,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "final_aggregation_json_path": str(aggregation_paths["final_aggregation_output"]),
         "report_content_json_path": str(output_root / "school_safety_final_report_content.json"),
@@ -132,6 +133,7 @@ def build_report_metadata(
         "human_review": global_rollup.get("human_review", {}),
         "human_review_decisions": global_rollup.get("human_review_decisions", []),
         "human_review_completed": global_rollup.get("human_review_completed", False),
+        "evidence_filename_map": global_rollup.get("evidence_filename_map", {}),
     }
 
 

@@ -23,6 +23,7 @@ import type {
   SectionName,
   UploadedImageResponse,
 } from "../types";
+import type { AppRoute } from "../routing";
 
 export type SectionFormState = {
   selected: boolean;
@@ -34,6 +35,14 @@ export type SectionFormState = {
 
 export type SectionFormStateMap = Record<SectionName, SectionFormState>;
 type ActiveOperation = "create" | "upload" | "start" | "finalize" | "review" | "";
+
+export type NextActionPrompt = {
+  key: string;
+  route: AppRoute;
+  title: string;
+  message: string;
+  primaryLabel: string;
+};
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -50,7 +59,7 @@ function createInitialSectionForms(): SectionFormStateMap {
     forms[name] = {
       selected: name === "classroom",
       sectionComment: `${formatSectionName(name)} inspection comments.`,
-      imageComment: "Visible condition image.",
+      imageComment: "Enter comments for image here",
       selectedFiles: [],
       uploadedImages: [],
     };
@@ -115,6 +124,7 @@ export function useInspectionRun() {
   const [runSections, setRunSections] = useState<SectionName[]>([]);
   const [runStatus, setRunStatus] = useState<RunStatusResponse | null>(null);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [dismissedPromptKey, setDismissedPromptKey] = useState("");
 
   const normalizedApiUrl = DEFAULT_API_URL;
   const selectedSectionNames = useMemo(
@@ -142,6 +152,63 @@ export function useInspectionRun() {
     (total, name) => total + (runStatus?.input_status.sections[name]?.image_count ?? sectionForms[name].uploadedImages.length),
     0,
   );
+  const actionPrompt = useMemo<NextActionPrompt | null>(() => {
+    if (!runId || !runStatus) {
+      return null;
+    }
+
+    let prompt: NextActionPrompt | null = null;
+    if (reviewRequired) {
+      const reviewMessage = pendingReviewCount
+        ? `${pendingReviewCount} flagged ${pendingReviewCount === 1 ? "item needs" : "items need"} review before the report can be generated.`
+        : "Human review is required before the report can be generated.";
+      prompt = {
+        key: `${runId}:review:${pendingReviewCount}`,
+        route: "human-review",
+        title: "Human review needed",
+        message: reviewMessage,
+        primaryLabel: "Go to Review",
+      };
+    } else if (reportGenerating) {
+      prompt = {
+        key: `${runId}:report-generating`,
+        route: "reports",
+        title: "Report generation started",
+        message: "The report is being prepared. Go to Reports to watch progress and download files when they appear.",
+        primaryLabel: "Go to Reports",
+      };
+    } else if (reportReady) {
+      prompt = {
+        key: `${runId}:report-ready`,
+        route: "reports",
+        title: "Report can be generated",
+        message: "All required review items are complete. Go to Reports to generate the final report.",
+        primaryLabel: "Go to Reports",
+      };
+    } else if (completedWithArtifacts) {
+      prompt = {
+        key: `${runId}:report-complete:${runStatus.artifacts.length}`,
+        route: "reports",
+        title: "Report is ready",
+        message: "The final report files are available in Reports.",
+        primaryLabel: "Open Reports",
+      };
+    }
+
+    if (!prompt || prompt.key === dismissedPromptKey) {
+      return null;
+    }
+    return prompt;
+  }, [
+    completedWithArtifacts,
+    dismissedPromptKey,
+    pendingReviewCount,
+    reportGenerating,
+    reportReady,
+    reviewRequired,
+    runId,
+    runStatus,
+  ]);
 
   useEffect(() => {
     if (runId) {
@@ -388,6 +455,12 @@ export function useInspectionRun() {
     [normalizedApiUrl, refreshStatus, reviewNotes, runId, showError],
   );
 
+  const dismissActionPrompt = useCallback(() => {
+    if (actionPrompt) {
+      setDismissedPromptKey(actionPrompt.key);
+    }
+  }, [actionPrompt]);
+
   return {
     normalizedApiUrl,
     message,
@@ -421,6 +494,7 @@ export function useInspectionRun() {
     reportReady,
     reportGenerating,
     completedWithArtifacts,
+    actionPrompt,
     isCreatingInspection: activeOperation === "create",
     isUploadingImages: activeOperation === "upload",
     isStartingAssessment: activeOperation === "start",
@@ -433,6 +507,7 @@ export function useInspectionRun() {
     startAssessment,
     finalizeCurrentReport,
     saveReviewDecision,
+    dismissActionPrompt,
   };
 }
 

@@ -55,7 +55,7 @@ export const OVERALL_STATUS_LABELS: Record<OverallInspectionStatus, string> = {
   acceptable_with_minor_issues: "Acceptable with Minor Issues",
   maintenance_attention_required: "Maintenance Attention Required",
   urgent_review_required: "Urgent Review Required",
-  insufficient_evidence: "Insufficient Evidence",
+  insufficient_evidence: "Review Required",
 };
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";

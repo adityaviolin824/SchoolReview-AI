@@ -334,6 +334,12 @@ def run_summary_with_human_review(record: InspectionRunRecord) -> dict:
     run_summary = copy.deepcopy(record.result.run_summary)
     run_summary["all_human_review_queue"] = review_items_for_record(record)
     run_summary["human_review_decisions"] = human_review_decision_records(record)
+    run_summary["evidence_filename_map"] = {
+        image.image_id: image.original_filename
+        for staged_images in record.staged_images.values()
+        for image in staged_images
+        if image.original_filename
+    }
     return run_summary
 
 
@@ -439,6 +445,13 @@ def downloadable_artifact_names(result: SchoolInspectionResult, run_id: str) -> 
     return sorted(artifact_names)
 
 
+def display_not_inspected_sections(result: SchoolInspectionResult) -> list[str]:
+    """Return configured categories not represented as processed or failed."""
+
+    attempted_sections = set(result.processed_sections) | set(result.failed_sections)
+    return [category_name for category_name in CATEGORY_NAMES if category_name not in attempted_sections]
+
+
 def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusResponse:
     """Build the public status response for a run."""
 
@@ -464,7 +477,7 @@ def build_status_response(record: InspectionRunRecord) -> InspectionRunStatusRes
         provisional=result.provisional,
         processed_sections=result.processed_sections,
         failed_sections=result.failed_sections,
-        not_inspected_sections=result.not_inspected_sections,
+        not_inspected_sections=display_not_inspected_sections(result),
         total_images=result.total_images,
         human_review_required=result.human_review_required,
         human_review_items=[

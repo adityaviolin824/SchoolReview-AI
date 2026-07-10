@@ -390,6 +390,12 @@ def run_final_aggregation(
         human_review_decisions=human_review_decisions,
         required_categories=required_categories,
     )
+    if full_run_state and full_run_state.get("evidence_filename_map"):
+        global_rollup["evidence_filename_map"] = {
+            str(image_id): str(filename)
+            for image_id, filename in full_run_state["evidence_filename_map"].items()
+            if str(image_id).strip() and str(filename).strip()
+        }
     payload = build_final_llm_payload(category_packets, global_rollup, source_files)
 
     response = parse_openai_structured_response(

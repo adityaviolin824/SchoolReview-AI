@@ -320,6 +320,139 @@ h2 {
   color: #f5c7b7;
 }
 
+.run-status-panel {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: minmax(280px, 1.25fr) minmax(260px, 0.9fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(185, 173, 149, 0.18);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(25, 29, 23, 0.98), rgba(17, 20, 15, 0.98));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  margin-bottom: 18px;
+  padding: 13px;
+}
+
+.run-status-panel-live {
+  border-color: rgba(178, 139, 87, 0.44);
+  box-shadow: 0 0 0 1px rgba(178, 139, 87, 0.1), 0 20px 48px rgba(0, 0, 0, 0.32);
+}
+
+.run-status-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.run-status-main span,
+.run-status-metrics span,
+.action-prompt-dialog span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.run-status-main strong {
+  display: block;
+  color: var(--text);
+  line-height: 1.28;
+}
+
+.run-status-main p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.run-status-dot {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(238, 232, 220, 0.36);
+  border-radius: 50%;
+  background: rgba(135, 155, 103, 0.84);
+  box-shadow: 0 0 18px rgba(135, 155, 103, 0.2);
+}
+
+.run-status-spinner {
+  width: 28px;
+  height: 28px;
+}
+
+.run-status-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.run-status-metrics > div {
+  min-height: 58px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: rgba(14, 16, 12, 0.5);
+  padding: 9px 10px;
+}
+
+.run-status-metrics strong {
+  display: block;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.run-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.action-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 11, 8, 0.62);
+  padding: 18px;
+}
+
+.action-prompt-dialog {
+  width: min(440px, 100%);
+  border: 1px solid rgba(178, 139, 87, 0.46);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(37, 42, 32, 0.99), rgba(22, 25, 19, 0.99));
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.42), 0 0 34px rgba(178, 139, 87, 0.16);
+  padding: 20px;
+}
+
+.action-prompt-dialog h2 {
+  margin: 0 0 9px;
+  color: var(--text);
+  font-size: 1.45rem;
+}
+
+.action-prompt-dialog p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.action-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
 .page-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1086,6 +1219,7 @@ h2 {
   }
 
   .topbar,
+  .run-status-panel,
   .overview-grid,
   .setup-grid,
   .reports-grid,
@@ -1122,6 +1256,7 @@ h2 {
   }
 
   .page-grid,
+  .run-status-metrics,
   .status-strip,
   .overview-lists,
   .form-grid,
@@ -1135,6 +1270,20 @@ h2 {
 
   .hero-panel {
     padding: 20px;
+  }
+
+  .run-status-panel {
+    top: 8px;
+  }
+
+  .run-status-actions,
+  .action-prompt-actions {
+    justify-content: stretch;
+  }
+
+  .run-status-actions button,
+  .action-prompt-actions button {
+    flex: 1 1 150px;
   }
 
   .hero-panel h2 {
