@@ -455,6 +455,18 @@ export function useInspectionRun() {
     [normalizedApiUrl, refreshStatus, reviewNotes, runId, showError],
   );
 
+  const resetInspectionDraft = useCallback(() => {
+    localStorage.removeItem(LAST_RUN_ID_STORAGE_KEY);
+    setRunId("");
+    setRunSections([]);
+    setRunStatus(null);
+    setReviewNotes({});
+    setDismissedPromptKey("");
+    setSectionForms(createInitialSectionForms());
+    setError("");
+    setMessage("Ready for a new inspection.");
+  }, []);
+
   const dismissActionPrompt = useCallback(() => {
     if (actionPrompt) {
       setDismissedPromptKey(actionPrompt.key);
@@ -507,6 +519,7 @@ export function useInspectionRun() {
     startAssessment,
     finalizeCurrentReport,
     saveReviewDecision,
+    resetInspectionDraft,
     dismissActionPrompt,
   };
 }

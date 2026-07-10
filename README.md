@@ -41,6 +41,7 @@ Known limits:
 - Live model runs require provider API keys.
 - The sample dataset is synthetic and intended for development.
 - The frontend is intentionally simple and optimized for local testing.
+- The API has no authentication. Do not expose it outside a trusted local environment.
 
 ## System Flow
 
@@ -208,6 +209,8 @@ LANGSMITH_PROJECT
 LANGSMITH_TRACING
 ```
 
+Tracing is disabled unless `LANGSMITH_TRACING=true` is set.
+
 Use environment variables or a local `backend/.env` file. Do not commit real secrets.
 
 ## Run The Backend API
@@ -275,6 +278,7 @@ Backend:
 
 ```bash
 cd backend
+uv run ruff check school_safety_validator tests
 uv run pytest -q
 ```
 
@@ -282,6 +286,7 @@ Frontend:
 
 ```bash
 cd frontend-final
+npm run check
 npm run build
 ```
 

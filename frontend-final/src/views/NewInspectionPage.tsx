@@ -71,15 +71,26 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
             <h2>Categories</h2>
             <p>{controller.selectedSectionNames.length} selected for this inspection.</p>
           </div>
-          <button
-            type="button"
-            className="primary-action compact-action"
-            onClick={controller.createInspectionRun}
-            disabled={controller.busy || controller.selectedSectionNames.length === 0}
-          >
-            {controller.isCreatingInspection ? "Creating..." : "Create Inspection"}
-          </button>
+          {controller.runId ? (
+            <button type="button" className="compact-action" onClick={controller.resetInspectionDraft} disabled={controller.busy}>
+              Start New Draft
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary-action compact-action"
+              onClick={controller.createInspectionRun}
+              disabled={controller.busy || controller.selectedSectionNames.length === 0}
+            >
+              {controller.isCreatingInspection ? "Creating..." : "Create Inspection"}
+            </button>
+          )}
         </div>
+        {controller.runId ? (
+          <p className="quiet-copy">
+            Category choices are locked for the loaded run. Start a new draft to change the selected categories.
+          </p>
+        ) : null}
         <div className="category-grid">
           {SECTION_NAMES.map((name) => {
             const form = controller.sectionForms[name];

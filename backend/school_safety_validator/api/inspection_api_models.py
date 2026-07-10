@@ -59,9 +59,12 @@ class UploadedImageResponse(BaseModel):
 
 
 class StartInspectionRunRequest(BaseModel):
-    """Runtime option for starting a staged inspection run."""
+    """Deprecated compatibility option for starting a staged inspection run."""
 
-    generate_report: bool = True
+    generate_report: bool = Field(
+        default=False,
+        description="Deprecated. Start runs assessment only; use /finalize-report to generate report artifacts.",
+    )
 
 
 class StartInspectionRunResponse(BaseModel):

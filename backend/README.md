@@ -106,6 +106,8 @@ LANGSMITH_PROJECT
 LANGSMITH_TRACING
 ```
 
+Tracing is disabled unless `LANGSMITH_TRACING=true` is set.
+
 ## Valid Inputs
 
 Valid section names:
@@ -165,10 +167,10 @@ Start assessment:
 ```bash
 curl -s -X POST "http://127.0.0.1:8000/inspection-runs/RUN_ID/start" \
   -H "Content-Type: application/json" \
-  -d '{"generate_report": false}'
+  -d '{}'
 ```
 
-`generate_report` is kept in the request body for compatibility. In the API flow, start runs assessment only. Final reports are generated through `/finalize-report`.
+`generate_report` is a deprecated compatibility field. Start runs assessment only, even when the field is set. Final reports are generated through `/finalize-report`.
 
 Check status:
 
@@ -213,6 +215,7 @@ runs/api_runs/RUN_ID/
 ```
 
 The API run store is in memory. If the server restarts, the active run records are cleared even though generated files remain on disk.
+The API has no authentication and is intended only for a trusted local environment.
 
 ## Run From JSON
 
@@ -242,6 +245,7 @@ Local JSON-run files are written under the output root you provide.
 ## Tests
 
 ```bash
+uv run ruff check school_safety_validator tests
 uv run pytest -q
 ```
 

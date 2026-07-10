@@ -232,10 +232,10 @@ async def run_category_inspection(
 
 
 async def run_category_with_tracing(category_name: str, settings: ValidatorSettings) -> CategoryRunState:
-    """Run one category with LangSmith tracing enabled."""
+    """Run one category with LangSmith tracing controlled by settings."""
 
     try:
-        with tracing_context(enabled=True, project_name=settings.langsmith_project):
+        with tracing_context(enabled=settings.langsmith_tracing, project_name=settings.langsmith_project):
             return await run_category_inspection(category_name, settings)
     finally:
         wait_for_all_tracers()

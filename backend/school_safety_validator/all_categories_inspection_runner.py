@@ -145,10 +145,10 @@ async def run_all_categories_with_tracing(
     run_category_names: list[str] | None,
     settings: ValidatorSettings,
 ) -> dict:
-    """Run all requested categories with one LangSmith trace context."""
+    """Run all requested categories with tracing controlled by settings."""
 
     try:
-        with tracing_context(enabled=True, project_name=settings.langsmith_project):
+        with tracing_context(enabled=settings.langsmith_tracing, project_name=settings.langsmith_project):
             return await run_all_category_inspections(run_category_names, settings)
     finally:
         wait_for_all_tracers()

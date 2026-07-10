@@ -46,6 +46,7 @@ class ValidatorSettings:
     max_concurrent_requests: int = 1
     confidence_threshold: float = 0.60
     langsmith_project: str = "school-safety-validator"
+    langsmith_tracing: bool = False
 
 
 def get_settings(
@@ -59,6 +60,7 @@ def get_settings(
 
     settings = ValidatorSettings(
         langsmith_project=os.getenv("LANGSMITH_PROJECT", "school-safety-validator"),
+        langsmith_tracing=os.getenv("LANGSMITH_TRACING", "").strip().lower() == "true",
     )
     if input_root is not None:
         settings = replace(settings, input_root=input_root)

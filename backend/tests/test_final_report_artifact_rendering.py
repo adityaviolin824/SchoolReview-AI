@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from school_safety_validator import final_report_artifact_rendering
 from school_safety_validator.final_report_artifact_rendering import (
+    REPORTLAB_CATEGORY_TABLE_WIDTHS_MM,
     REPORTLAB_PRIORITY_TABLE_WIDTHS_MM,
     REPORTLAB_USABLE_WIDTH_MM,
     reportlab_col_widths,
@@ -143,6 +144,14 @@ def test_enterprise_report_renderers_include_risks_scope_and_actions(tmp_path: P
     assert "Enterprise inspection report" not in html_text
     assert "Review Required" in markdown_text
     assert "Review Required" in html_text
+    assert "Review Flag" in markdown_text
+    assert "Review Flag" in html_text
+    assert "Evidence IDs" in markdown_text
+    assert "Evidence IDs" in html_text
+    assert "E1" in markdown_text
+    assert "E1" in html_text
+    assert "evidence_id_mapping" in markdown_text
+    assert "evidence_id_mapping" in html_text
     assert "uploaded_classroom_photo.jpg" in markdown_text
     assert "uploaded_classroom_photo.jpg" in html_text
     assert str(tmp_path) not in markdown_text
@@ -209,10 +218,11 @@ def test_reportlab_priority_table_widths_stay_inside_a4_frame() -> None:
     from reportlab.platypus import Table
 
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="TableHeader", parent=styles["BodyText"], wordWrap="CJK"))
-    styles.add(ParagraphStyle(name="TableCell", parent=styles["BodyText"], wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="TableHeader", parent=styles["BodyText"], splitLongWords=0, wordWrap="LTR"))
+    styles.add(ParagraphStyle(name="TableCell", parent=styles["BodyText"], splitLongWords=0, wordWrap="LTR"))
+    styles.add(ParagraphStyle(name="TableCellLong", parent=styles["TableCell"], splitLongWords=1, wordWrap="LTR"))
     rows = [
-        ["Priority", "Category", "Recommended Action", "Evidence", "Review Required"],
+        ["Priority", "Category", "Recommended Action", "Evidence IDs", "Review Flag"],
         [
             "Medium",
             "classroom",
@@ -223,11 +233,35 @@ def test_reportlab_priority_table_widths_stay_inside_a4_frame() -> None:
     ]
 
     table = Table(
-        reportlab_table_rows(rows, styles),
+        reportlab_table_rows(rows, styles, split_long_columns={3}),
         colWidths=reportlab_col_widths(REPORTLAB_PRIORITY_TABLE_WIDTHS_MM),
         repeatRows=1,
     )
     width, _height = table.wrap(REPORTLAB_USABLE_WIDTH_MM * mm, 200 * mm)
 
     assert sum(REPORTLAB_PRIORITY_TABLE_WIDTHS_MM) == REPORTLAB_USABLE_WIDTH_MM
+    assert width <= REPORTLAB_USABLE_WIDTH_MM * mm
+
+
+def test_reportlab_category_table_widths_stay_inside_a4_frame() -> None:
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Table
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="TableHeader", parent=styles["BodyText"], splitLongWords=0, wordWrap="LTR"))
+    styles.add(ParagraphStyle(name="TableCell", parent=styles["BodyText"], splitLongWords=0, wordWrap="LTR"))
+    rows = [
+        ["Category", "Status", "Images", "High", "Medium", "Low", "Review Flag"],
+        ["fire_extinguisher", "Attention Required", "2", "0", "4", "0", "Yes"],
+    ]
+
+    table = Table(
+        reportlab_table_rows(rows, styles),
+        colWidths=reportlab_col_widths(REPORTLAB_CATEGORY_TABLE_WIDTHS_MM),
+        repeatRows=1,
+    )
+    width, _height = table.wrap(REPORTLAB_USABLE_WIDTH_MM * mm, 200 * mm)
+
+    assert sum(REPORTLAB_CATEGORY_TABLE_WIDTHS_MM) == REPORTLAB_USABLE_WIDTH_MM
     assert width <= REPORTLAB_USABLE_WIDTH_MM * mm

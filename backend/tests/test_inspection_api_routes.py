@@ -112,6 +112,14 @@ def test_cors_allows_local_vite_frontend() -> None:
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
+def test_start_request_schema_defaults_to_assessment_only() -> None:
+    schema = create_app().openapi()["components"]["schemas"]["StartInspectionRunRequest"]
+    generate_report = schema["properties"]["generate_report"]
+
+    assert generate_report["default"] is False
+    assert "Deprecated" in generate_report["description"]
+
+
 def test_create_app_serves_bundled_frontend_without_hiding_api_routes(monkeypatch, tmp_path: Path) -> None:
     frontend_dist_dir = tmp_path / "frontend"
     frontend_dist_dir.mkdir()

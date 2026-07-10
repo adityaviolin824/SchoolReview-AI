@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import contextlib
 import html
 import io
@@ -16,22 +15,15 @@ from .final_report_artifact_validation import validate_rendered_report
 from .final_verdict_aggregation import final_report_output_root
 from .inspection_data_models import FinalReportContent
 from .logging_config import logging
-from .inspection_runtime_settings import BACKEND_ROOT, ValidatorSettings
+from .inspection_runtime_settings import ValidatorSettings
 
 
 logger = logging.getLogger(__name__)
 
 
-SUPPORTED_REPORT_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-REPORT_IMAGE_MIME_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
-}
 REPORTLAB_USABLE_WIDTH_MM = 170
-REPORTLAB_CATEGORY_TABLE_WIDTHS_MM = [25, 42, 17, 14, 19, 14, 39]
-REPORTLAB_PRIORITY_TABLE_WIDTHS_MM = [20, 24, 66, 45, 15]
+REPORTLAB_CATEGORY_TABLE_WIDTHS_MM = [32, 38, 16, 13, 16, 13, 42]
+REPORTLAB_PRIORITY_TABLE_WIDTHS_MM = [18, 32, 55, 38, 27]
 STATUS_LABEL_OVERRIDES = {
     "insufficient_evidence": "Review Required",
 }
@@ -45,26 +37,9 @@ STANDARD_LIMITATIONS = [
 
 
 def find_report_cover_image() -> Path | None:
-    """Return the first available report cover image, if one exists."""
+    """Return no decorative cover image for the cautious final report."""
 
-    image_dir = BACKEND_ROOT / "utility_files" / "report_img"
-    image_paths = sorted(
-        image_path
-        for image_path in image_dir.glob("*")
-        if image_path.suffix.lower() in SUPPORTED_REPORT_IMAGE_EXTENSIONS
-    )
-    return image_paths[0] if image_paths else None
-
-
-def image_path_to_data_url(image_path: Path | None) -> str:
-    """Return a browser/PDF friendly data URL for the report cover image."""
-
-    if not image_path or not image_path.exists():
-        return ""
-
-    mime_type = REPORT_IMAGE_MIME_TYPES.get(image_path.suffix.lower(), "image/png")
-    image_base64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
-    return f"data:{mime_type};base64,{image_base64}"
+    return None
 
 
 def status_label(value: str) -> str:
@@ -101,6 +76,7 @@ def build_report_appendix(metadata: dict) -> dict:
         "deterministic_status_floor": status_label(metadata["deterministic_status_floor"]),
         "human_review_completed": metadata.get("human_review_completed", False),
         "human_review_decisions": metadata.get("human_review_decisions", []),
+        "evidence_id_mapping": metadata.get("evidence_id_mapping", []),
     }
 
 
@@ -136,6 +112,60 @@ def display_filenames(values: list[str], evidence_filename_map: dict[str, str] |
     """Return report-safe evidence filenames for a list of references."""
 
     return clean_text_items([display_filename(value, evidence_filename_map) for value in values])
+
+
+def build_evidence_id_mapping(
+    content: FinalReportContent,
+    category_packets: list[dict],
+    metadata: dict,
+) -> dict[str, str]:
+    """Assign compact display IDs to evidence filenames used in the report."""
+
+    evidence_filename_map = metadata.get("evidence_filename_map", {})
+    ordered_filenames = []
+    seen = set()
+
+    def add_evidence(value: str) -> None:
+        filename = display_filename(value, evidence_filename_map)
+        if filename and filename not in seen:
+            seen.add(filename)
+            ordered_filenames.append(filename)
+
+    for section in content.category_sections:
+        for evidence_ref in clean_text_items(list(section.evidence_refs)):
+            add_evidence(evidence_ref)
+
+    for packet in category_packets:
+        for finding in packet.get("key_findings", []):
+            add_evidence(str(finding.get("image_id", "")))
+        for gap in packet.get("documentation_gaps", []):
+            add_evidence(str(gap.get("image_id", "")))
+
+    for decision in metadata.get("human_review_decisions", []):
+        add_evidence(str(decision.get("image_id", "")))
+
+    return {filename: f"E{index}" for index, filename in enumerate(ordered_filenames, start=1)}
+
+
+def evidence_id_for(
+    value: str,
+    evidence_id_mapping: dict[str, str],
+    evidence_filename_map: dict[str, str] | None = None,
+) -> str:
+    """Return the compact evidence ID for a reference, falling back to the display filename."""
+
+    filename = display_filename(value, evidence_filename_map)
+    return evidence_id_mapping.get(filename, filename)
+
+
+def evidence_ids_for(
+    values: list[str],
+    evidence_id_mapping: dict[str, str],
+    evidence_filename_map: dict[str, str] | None = None,
+) -> list[str]:
+    """Return compact evidence IDs for a list of references."""
+
+    return clean_text_items([evidence_id_for(value, evidence_id_mapping, evidence_filename_map) for value in values])
 
 
 def source_file_label(item: dict) -> str:
@@ -190,7 +220,6 @@ def status_class(value: str) -> str:
         "acceptable_with_minor_issues": "status-acceptable",
         "urgent_review": "status-urgent",
         "attention_required": "status-attention",
-        "insufficient_evidence": "status-insufficient",
         "minor_maintenance": "status-minor",
         "acceptable_visible_condition": "status-acceptable",
     }.get(value, "status-neutral")
@@ -207,16 +236,25 @@ def priority_class(value: str) -> str:
     }.get(value, "priority-low")
 
 
-def evidence_summary(section: object, packet: dict, evidence_filename_map: dict[str, str] | None = None) -> str:
+def evidence_summary(
+    section: object,
+    packet: dict,
+    evidence_id_mapping: dict[str, str],
+    evidence_filename_map: dict[str, str] | None = None,
+) -> str:
     """Return compact evidence text from already-validated category data."""
 
     evidence_refs = clean_text_items(list(getattr(section, "evidence_refs", [])))
     key_findings = packet.get("key_findings", [])
     if evidence_refs:
-        return ", ".join(display_filenames(evidence_refs[:3], evidence_filename_map))
+        return ", ".join(evidence_ids_for(evidence_refs[:3], evidence_id_mapping, evidence_filename_map))
     if key_findings:
         return ", ".join(
-            display_filenames(clean_text_items([item.get("image_id", "") for item in key_findings])[:3], evidence_filename_map)
+            evidence_ids_for(
+                clean_text_items([item.get("image_id", "") for item in key_findings])[:3],
+                evidence_id_mapping,
+                evidence_filename_map,
+            )
         )
     return "Category-level evidence packet"
 
@@ -224,6 +262,7 @@ def evidence_summary(section: object, packet: dict, evidence_filename_map: dict[
 def build_priority_action_rows(
     content: FinalReportContent,
     category_packets: list[dict],
+    evidence_id_mapping: dict[str, str],
     evidence_filename_map: dict[str, str] | None = None,
 ) -> list[dict]:
     """Build deterministic action rows from validated category sections."""
@@ -241,7 +280,7 @@ def build_priority_action_rows(
                     "category": section.category,
                     "issue": section.summary,
                     "action": action,
-                    "evidence": evidence_summary(section, packet, evidence_filename_map),
+                    "evidence": evidence_summary(section, packet, evidence_id_mapping, evidence_filename_map),
                     "review_required": review_required,
                 }
             )
@@ -251,6 +290,7 @@ def build_priority_action_rows(
 def build_category_view_sections(
     content: FinalReportContent,
     category_packets: list[dict],
+    evidence_id_mapping: dict[str, str],
     evidence_filename_map: dict[str, str] | None = None,
 ) -> list[dict]:
     """Prepare deterministic category display fields without changing semantics."""
@@ -264,7 +304,7 @@ def build_category_view_sections(
             key_findings.append(
                 {
                     **finding,
-                    "image_id": display_filename(finding.get("image_id", ""), evidence_filename_map),
+                    "image_id": evidence_id_for(finding.get("image_id", ""), evidence_id_mapping, evidence_filename_map),
                 }
             )
         documentation_gaps = []
@@ -272,7 +312,7 @@ def build_category_view_sections(
             documentation_gaps.append(
                 {
                     **gap,
-                    "image_id": display_filename(gap.get("image_id", ""), evidence_filename_map),
+                    "image_id": evidence_id_for(gap.get("image_id", ""), evidence_id_mapping, evidence_filename_map),
                 }
             )
         sections.append(
@@ -290,7 +330,7 @@ def build_category_view_sections(
                 "issue_counts": packet["issue_counts"],
                 "key_findings": key_findings,
                 "documentation_gaps": documentation_gaps,
-                "evidence_refs": display_filenames(section.evidence_refs, evidence_filename_map),
+                "evidence_refs": evidence_ids_for(section.evidence_refs, evidence_id_mapping, evidence_filename_map),
                 "recommended_actions": clean_text_items(section.recommended_actions),
             }
         )
@@ -310,14 +350,14 @@ def build_global_action_groups(content: FinalReportContent) -> list[dict]:
     ]
 
 
-def build_human_review_decision_rows(metadata: dict) -> list[dict]:
+def build_human_review_decision_rows(metadata: dict, evidence_id_mapping: dict[str, str]) -> list[dict]:
     """Return exact human-review decisions for deterministic report display."""
 
     evidence_filename_map = metadata.get("evidence_filename_map", {})
     return [
         {
             "category": str(decision.get("category_name", "")),
-            "image_id": display_filename(str(decision.get("image_id", "")), evidence_filename_map),
+            "image_id": evidence_id_for(str(decision.get("image_id", "")), evidence_id_mapping, evidence_filename_map),
             "status": str(decision.get("status", "")),
             "notes": str(decision.get("notes", "")),
         }
@@ -330,6 +370,11 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
 
     not_inspected_categories = clean_text_items(metadata.get("not_inspected_categories", []))
     evidence_filename_map = metadata.get("evidence_filename_map", {})
+    evidence_id_mapping = build_evidence_id_mapping(content, category_packets, metadata)
+    metadata["evidence_id_mapping"] = [
+        {"evidence_id": evidence_id, "filename": filename}
+        for filename, evidence_id in evidence_id_mapping.items()
+    ]
     human_review_items = sum(1 for packet in category_packets if packet.get("human_review_required"))
     issue_counts = {"high": 0, "medium": 0, "low": 0}
     for packet in category_packets:
@@ -346,13 +391,13 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
         "total_images": metadata["total_images"],
         "human_review_items": human_review_items,
         "human_review_completed": metadata.get("human_review_completed", False),
-        "human_review_decision_rows": build_human_review_decision_rows(metadata),
+        "human_review_decision_rows": build_human_review_decision_rows(metadata, evidence_id_mapping),
         "issue_counts": issue_counts,
         "deterministic_status_floor": metadata["deterministic_status_floor"],
         "deterministic_status_floor_label": status_label(metadata["deterministic_status_floor"]),
         "category_table": build_category_table_rows(content, category_packets),
-        "category_sections": build_category_view_sections(content, category_packets, evidence_filename_map),
-        "priority_action_rows": build_priority_action_rows(content, category_packets, evidence_filename_map),
+        "category_sections": build_category_view_sections(content, category_packets, evidence_id_mapping, evidence_filename_map),
+        "priority_action_rows": build_priority_action_rows(content, category_packets, evidence_id_mapping, evidence_filename_map),
         "global_action_groups": build_global_action_groups(content),
         "executive_summary": clean_text_items(content.executive_summary),
         "key_risks": clean_text_items(metadata.get("key_risks", [])),
@@ -370,7 +415,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
 
     view = build_report_view_model(content, metadata, category_packets)
     category_rows = [
-        "| Category | Status | Images | High | Medium | Low | Human Review |",
+        "| Category | Status | Images | High | Medium | Low | Review Flag |",
         "| --- | --- | ---: | ---: | ---: | ---: | --- |",
     ]
     for row in view["category_table"]:
@@ -391,7 +436,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
         )
 
     action_rows = [
-        "| Priority | Category | Recommended Action | Evidence / Basis | Review Required |",
+        "| Priority | Category | Recommended Action | Evidence IDs | Review Flag |",
         "| --- | --- | --- | --- | --- |",
     ]
     for row in view["priority_action_rows"]:
@@ -437,13 +482,8 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
         f"- {row['category']} / {row['image_id']}: {row['status']} - {row['notes'] or 'No reviewer notes.'}"
         for row in view["human_review_decision_rows"]
     ]
-    cover_lines = []
-    if metadata.get("cover_image_path"):
-        cover_lines = [f"![Report cover]({metadata['cover_image_path']})", ""]
-
     return "\n\n".join(
         [
-            *cover_lines,
             f"# {content.title}",
             "## Status Dashboard\n\n"
             f"- Report status: {view['report_status_label']}\n"
@@ -479,7 +519,7 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             "## Section-wise Findings\n\n" + "\n\n".join(category_sections),
             "## Limitations and Disclaimer\n\n" + markdown_list(view["limitations"]) + f"\n\n{content.disclaimer}",
             "## Machine-Readable Appendix\n\n```json\n"
-            + json.dumps(build_report_appendix(metadata), indent=2, ensure_ascii=False)
+            + json.dumps(view["appendix"], indent=2, ensure_ascii=False)
             + "\n```",
         ]
     ) + "\n"
@@ -519,19 +559,19 @@ REPORT_HTML_TEMPLATE = """
   @bottom-right { content: ""; }
 }
 * { box-sizing: border-box; }
-html { background: #fbfcee; color: #33291f; font-family: "Aptos", "Avenir Next", "Segoe UI", "Noto Sans", Arial, sans-serif; font-size: 10.2pt; line-height: 1.48; }
+html { background: #fbfcee; color: #33291f; font-family: "Aptos", "Avenir Next", "Segoe UI", "Noto Sans", Arial, sans-serif; font-size: 10.2pt; line-height: 1.5; }
 body { background: #fbfcee; margin: 0; }
 h1, h2, h3 { color: #3f331f; line-height: 1.18; margin: 0; }
 h1 { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
-h2 { border-bottom: 1px solid #c9b27c; color: #4f4f2a; font-size: 15pt; margin: 9mm 0 4mm; padding-bottom: 2mm; page-break-after: avoid; }
-h3 { font-size: 12.5pt; margin: 0 0 3mm; page-break-after: avoid; }
+h2 { border-bottom: 1px solid #c9b27c; color: #4f4f2a; font-size: 16pt; margin: 10mm 0 4mm; padding-bottom: 2mm; page-break-after: avoid; }
+h3 { color: #5b4a2e; font-size: 12.5pt; margin: 3mm 0 3mm; page-break-after: avoid; }
 p { margin: 0 0 3mm; }
 ul { margin: 2mm 0 4mm 5mm; padding: 0; }
 li { margin: 0 0 1.5mm; }
-table { border-collapse: collapse; margin: 3mm 0 7mm; page-break-inside: auto; width: 100%; }
+table { border-collapse: collapse; margin: 3mm 0 7mm; page-break-inside: auto; table-layout: fixed; width: 100%; }
 thead { display: table-header-group; }
 tr { page-break-inside: avoid; }
-th, td { border: 1px solid #d8c8a7; padding: 6px 7px; text-align: left; vertical-align: top; }
+th, td { border: 1px solid #d8c8a7; hyphens: none; overflow-wrap: break-word; padding: 7px 8px; text-align: left; vertical-align: top; word-break: normal; }
 th { background: #efe4c8; color: #4d4028; font-size: 8.5pt; letter-spacing: .03em; text-transform: uppercase; }
 td { font-size: 9.2pt; }
 tbody tr:nth-child(even) { background: #f5f7df; }
@@ -541,12 +581,10 @@ pre { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 .cover-kicker { color: #f0c76a; font-size: 9pt; font-weight: 700; letter-spacing: .11em; margin-bottom: 7mm; text-transform: uppercase; }
 .cover h1 { color: #fff8e8; font-size: 30pt; max-width: 160mm; }
 .cover-subtitle { color: #f5e8c8; font-size: 12.5pt; margin-top: 6mm; max-width: 150mm; }
-.cover-grid { display: grid; gap: 5mm; grid-template-columns: 1fr 1fr; margin-top: 12mm; }
-.cover-panel { background: rgba(58, 43, 29, .28); border: 1px solid rgba(255,244,214,.36); border-radius: 8px; padding: 5mm; }
+.cover-grid { display: grid; gap: 5mm; grid-template-columns: minmax(0, .9fr) minmax(0, 1.35fr) minmax(0, .75fr); margin-top: 12mm; }
+.cover-panel { background: rgba(58, 43, 29, .28); border: 1px solid rgba(255,244,214,.36); border-radius: 8px; min-height: 24mm; padding: 5mm; }
 .cover-label { color: #f4d58d; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.cover-value { color: #fffaf0; font-size: 12pt; font-weight: 700; margin-top: 2mm; }
-.cover-image { background: rgba(255,250,240,.1); border: 1px solid rgba(255,244,214,.28); border-radius: 8px; height: 105mm; margin-top: 10mm; overflow: hidden; padding: 0; }
-.cover-image img { display: block; height: 100%; object-fit: cover; width: 100%; }
+.cover-value { color: #fffaf0; font-size: 11.5pt; font-weight: 700; line-height: 1.25; margin-top: 2mm; overflow-wrap: break-word; }
 .cover-footer { bottom: 17mm; color: #f5e8c8; font-size: 8.8pt; left: 21mm; position: absolute; right: 21mm; }
 .report-header { border-bottom: 3px solid #7b6f38; margin-bottom: 6mm; padding-bottom: 4mm; }
 .report-header h1 { font-size: 21pt; margin-bottom: 2mm; }
@@ -593,7 +631,6 @@ pre { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
     <div class="cover-panel"><div class="cover-label">Report status</div><div class="cover-value">{{ view.report_status_label }}</div></div>
     <div class="cover-panel"><div class="cover-label">Evidence images</div><div class="cover-value">{{ view.total_images }}</div></div>
   </div>
-  {% if cover_image_url %}<div class="cover-image"><img src="{{ cover_image_url }}" alt="School inspection report visual"></div>{% endif %}
   <div class="cover-footer">{{ view.disclaimer }}</div>
 </section>
 <main>
@@ -624,12 +661,12 @@ pre { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 <h2>Source References</h2>
 <ul>{% for item in view.source_files %}<li>{{ item }}</li>{% endfor %}</ul>
 <h2>Category Summary Table</h2>
-<table><thead><tr><th>Category</th><th>Status</th><th>Images</th><th>High</th><th>Medium</th><th>Low</th><th>Human Review</th></tr></thead><tbody>
+<table><thead><tr><th>Category</th><th>Status</th><th>Images</th><th>High</th><th>Medium</th><th>Low</th><th>Review Flag</th></tr></thead><tbody>
 {% for row in view.category_table %}<tr><td><code>{{ row.category }}</code></td><td>{{ row.status }}</td><td>{{ row.image_count }}</td><td>{{ row.high }}</td><td>{{ row.medium }}</td><td>{{ row.low }}</td><td>{{ row.human_review }}</td></tr>{% endfor %}
 </tbody></table>
 <h2>Priority Actions</h2>
 {% if view.priority_action_rows %}
-<table><thead><tr><th>Priority</th><th>Category</th><th>Recommended action</th><th>Evidence / basis</th><th>Review required</th></tr></thead><tbody>
+<table><thead><tr><th>Priority</th><th>Category</th><th>Recommended action</th><th>Evidence IDs</th><th>Review Flag</th></tr></thead><tbody>
 {% for row in view.priority_action_rows %}<tr><td><span class="badge {{ row.priority_class }}">{{ row.priority }}</span></td><td>{{ row.category }}</td><td>{{ row.action }}</td><td>{{ row.evidence }}</td><td>{{ row.review_required }}</td></tr>{% endfor %}
 </tbody></table>
 {% else %}<p class="muted">No priority action rows were recorded in the validated report content.</p>{% endif %}
@@ -674,13 +711,11 @@ def render_report_html(content: FinalReportContent, metadata: dict, category_pac
     """Render the final report as deterministic HTML for PDF conversion."""
 
     view = build_report_view_model(content, metadata, category_packets)
-    cover_image_path = Path(metadata["cover_image_path"]) if metadata.get("cover_image_path") else None
 
     environment = Environment(loader=BaseLoader(), autoescape=select_autoescape(default=True))
     template = environment.from_string(REPORT_HTML_TEMPLATE)
     return template.render(
         view=view,
-        cover_image_url=image_path_to_data_url(cover_image_path),
         appendix_json=json.dumps(view["appendix"], indent=2, ensure_ascii=False),
     )
 
@@ -710,46 +745,28 @@ def reportlab_col_widths(widths_mm: list[float]) -> list[float]:
     return [width * mm for width in widths_mm]
 
 
-def reportlab_cover_image(image_path: Path, target_width: float, target_height: float):
-    """Return a cropped cover image flowable that fills the target rectangle."""
-
-    from PIL import Image as PILImage
-    from reportlab.platypus import Image as RLImage
-
-    with PILImage.open(image_path) as source_image:
-        image = source_image.convert("RGB")
-        source_width, source_height = image.size
-        target_ratio = target_width / target_height
-        source_ratio = source_width / source_height
-
-        if source_ratio > target_ratio:
-            cropped_width = int(source_height * target_ratio)
-            left = (source_width - cropped_width) // 2
-            crop_box = (left, 0, left + cropped_width, source_height)
-        else:
-            cropped_height = int(source_width / target_ratio)
-            top = (source_height - cropped_height) // 2
-            crop_box = (0, top, source_width, top + cropped_height)
-
-        cropped_image = image.crop(crop_box)
-        image_buffer = io.BytesIO()
-        cropped_image.save(image_buffer, format="JPEG", quality=92)
-        image_buffer.seek(0)
-
-    cover_image = RLImage(image_buffer, width=target_width, height=target_height)
-    cover_image._school_validator_image_buffer = image_buffer
-    return cover_image
-
-
-def reportlab_table_rows(rows: list[list[object]], styles: dict) -> list[list[object]]:
+def reportlab_table_rows(
+    rows: list[list[object]],
+    styles: dict,
+    split_long_columns: set[int] | None = None,
+) -> list[list[object]]:
     """Wrap table values in Paragraphs so long text cannot force page overflow."""
 
     from reportlab.platypus import Paragraph
 
+    split_long_columns = split_long_columns or set()
     table_rows = []
     for row_index, row in enumerate(rows):
-        style = styles["TableHeader"] if row_index == 0 else styles["TableCell"]
-        table_rows.append([Paragraph(reportlab_text(str(value)), style) for value in row])
+        paragraph_row = []
+        for column_index, value in enumerate(row):
+            if row_index == 0:
+                style = styles["TableHeader"]
+            elif column_index in split_long_columns:
+                style = styles["TableCellLong"]
+            else:
+                style = styles["TableCell"]
+            paragraph_row.append(Paragraph(reportlab_text(str(value)), style))
+        table_rows.append(paragraph_row)
     return table_rows
 
 
@@ -772,14 +789,36 @@ def render_report_pdf_with_reportlab(
     styles["Title"].fontName = "Times-Bold"
     styles["Title"].textColor = colors.HexColor("#3f331f")
     styles["BodyText"].fontName = "Helvetica"
+    styles["BodyText"].fontSize = 9.8
     styles["BodyText"].textColor = colors.HexColor("#33291f")
-    styles["BodyText"].leading = 13.5
+    styles["BodyText"].leading = 13.2
+    styles["BodyText"].spaceAfter = 3
+    styles["BodyText"].wordWrap = "LTR"
+    styles["BodyText"].splitLongWords = 0
     styles["Normal"].textColor = colors.HexColor("#33291f")
+    styles["Normal"].wordWrap = "LTR"
+    styles["Normal"].splitLongWords = 0
     styles["Heading2"].fontName = "Times-Bold"
     styles["Heading2"].textColor = colors.HexColor("#4f4f2a")
+    styles["Heading2"].fontSize = 16
+    styles["Heading2"].leading = 19
+    styles["Heading2"].spaceBefore = 13
+    styles["Heading2"].spaceAfter = 6
+    styles["Heading2"].keepWithNext = 1
     styles["Heading3"].fontName = "Times-Bold"
     styles["Heading3"].textColor = colors.HexColor("#5b4a2e")
+    styles["Heading3"].fontSize = 12
+    styles["Heading3"].leading = 15
+    styles["Heading3"].spaceBefore = 8
+    styles["Heading3"].spaceAfter = 4
+    styles["Heading3"].keepWithNext = 1
+    styles["Heading4"].fontName = "Helvetica-BoldOblique"
     styles["Heading4"].textColor = colors.HexColor("#5b4a2e")
+    styles["Heading4"].fontSize = 10
+    styles["Heading4"].leading = 12.5
+    styles["Heading4"].spaceBefore = 7
+    styles["Heading4"].spaceAfter = 2
+    styles["Heading4"].keepWithNext = 1
     styles.add(
         ParagraphStyle(
             name="CoverText",
@@ -820,6 +859,9 @@ def render_report_pdf_with_reportlab(
             textColor=colors.HexColor("#f4d58d"),
             fontSize=8.5,
             leading=10,
+            spaceAfter=4,
+            splitLongWords=0,
+            wordWrap="LTR",
         )
     )
     styles.add(
@@ -828,30 +870,41 @@ def render_report_pdf_with_reportlab(
             parent=styles["BodyText"],
             fontName="Helvetica-Bold",
             textColor=colors.HexColor("#fffaf0"),
-            fontSize=14,
-            leading=17,
+            fontSize=12.5,
+            leading=15.2,
+            splitLongWords=0,
+            wordWrap="LTR",
         )
     )
-    styles["BodyText"].wordWrap = "CJK"
     styles.add(
         ParagraphStyle(
             name="TableHeader",
             parent=styles["BodyText"],
             fontName="Helvetica-Bold",
-            fontSize=8,
-            leading=9.5,
+            fontSize=7.8,
+            leading=9.4,
             textColor=colors.HexColor("#4d4028"),
-            wordWrap="CJK",
+            splitLongWords=0,
+            wordWrap="LTR",
         )
     )
     styles.add(
         ParagraphStyle(
             name="TableCell",
             parent=styles["BodyText"],
-            fontSize=8.2,
-            leading=10,
+            fontSize=8,
+            leading=10.2,
             textColor=colors.HexColor("#33291f"),
-            wordWrap="CJK",
+            splitLongWords=0,
+            wordWrap="LTR",
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="TableCellLong",
+            parent=styles["TableCell"],
+            splitLongWords=1,
+            wordWrap="LTR",
         )
     )
     view = build_report_view_model(content, metadata, category_packets)
@@ -883,43 +936,23 @@ def render_report_pdf_with_reportlab(
                     ],
                 ],
             ],
-            colWidths=[56 * mm, 56 * mm, 56 * mm],
-            rowHeights=[20 * mm],
+            colWidths=[52 * mm, 76 * mm, 40 * mm],
             hAlign="LEFT",
             style=[
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#4a4729")),
                 ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
                 ("INNERGRID", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
             ],
         ),
         Spacer(1, 7 * mm),
     ]
 
-    cover_image_path = Path(metadata["cover_image_path"]) if metadata.get("cover_image_path") else None
-    if cover_image_path and cover_image_path.exists():
-        cover_width = 168 * mm
-        cover_height = 105 * mm
-        cover_image = reportlab_cover_image(cover_image_path, cover_width, cover_height)
-        cover_image.hAlign = "CENTER"
-        image_frame = Table(
-            [[cover_image]],
-            colWidths=[cover_width],
-            rowHeights=[cover_height],
-            style=[
-                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#626744")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ],
-        )
-        story.extend([image_frame, Spacer(1, 4 * mm)])
+    story.append(Spacer(1, 80 * mm))
 
     story.extend(
         [
@@ -972,7 +1005,7 @@ def render_report_pdf_with_reportlab(
         ]
     )
 
-    table_rows = [["Category", "Status", "Images", "High", "Medium", "Low", "Human Review"]]
+    table_rows = [["Category", "Status", "Images", "High", "Medium", "Low", "Review Flag"]]
     for row in build_category_table_rows(content, category_packets):
         table_rows.append(
             [
@@ -999,26 +1032,30 @@ def render_report_pdf_with_reportlab(
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8c8a7")),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
         )
     )
     story.extend([table, Spacer(1, 4 * mm)])
 
     if view["priority_action_rows"]:
-        priority_rows = [["Priority", "Category", "Recommended Action", "Evidence", "Review Required"]]
+        priority_rows = [["Priority", "Category", "Recommended Action", "Evidence IDs", "Review Flag"]]
         for row in view["priority_action_rows"]:
             priority_rows.append(
                 [
                     row["priority"],
                     row["category"],
-                    reportlab_text(row["action"]),
-                    reportlab_text(row["evidence"]),
+                    row["action"],
+                    row["evidence"],
                     row["review_required"],
                 ]
             )
         story.append(Paragraph("Priority Actions", styles["Heading2"]))
         priority_table = Table(
-            reportlab_table_rows(priority_rows, styles),
+            reportlab_table_rows(priority_rows, styles, split_long_columns={3}),
             colWidths=reportlab_col_widths(REPORTLAB_PRIORITY_TABLE_WIDTHS_MM),
             repeatRows=1,
         )
@@ -1029,6 +1066,10 @@ def render_report_pdf_with_reportlab(
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8c8a7")),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
@@ -1076,7 +1117,7 @@ def render_report_pdf_with_reportlab(
     story.append(Paragraph("Machine-Readable Appendix", styles["Heading2"]))
     story.append(
         Paragraph(
-            reportlab_text(json.dumps(build_report_appendix(metadata), indent=2, ensure_ascii=False)).replace(
+            reportlab_text(json.dumps(view["appendix"], indent=2, ensure_ascii=False)).replace(
                 "\n", "<br />"
             ),
             styles["Code"],

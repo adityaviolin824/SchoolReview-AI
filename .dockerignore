@@ -75,9 +75,6 @@ node_modules/
 frontend-final/node_modules
 frontend-final/node_modules/
 frontend-final/dist/
-frontend-testing/
-frontend-testing/node_modules
-frontend-testing/node_modules/
 **/.next/
 **/out/
 **/dist/
