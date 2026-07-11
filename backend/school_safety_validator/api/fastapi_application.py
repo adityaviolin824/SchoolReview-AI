@@ -1,4 +1,5 @@
 """FastAPI application factory for the SchoolReview AI backend."""
+# uv run --no-sync uvicorn school_safety_validator.api.fastapi_application:app --host 0.0.0.0 --port 8000
 
 from __future__ import annotations
 

@@ -171,6 +171,42 @@ def test_enterprise_report_renderers_include_risks_scope_and_actions(tmp_path: P
     assert "Hidden defects, non-visible areas, image-quality limitations, and missing evidence may affect the findings." in html_text
 
 
+def test_report_cover_uses_the_bundled_image_and_hides_internal_report_id(tmp_path: Path) -> None:
+    from pypdf import PdfReader
+
+    cover_image_path = (
+        Path(final_report_artifact_rendering.__file__).resolve().parents[1]
+        / "utility_files"
+        / "report_img"
+        / "sample_report_image.png"
+    )
+    report_metadata = metadata(tmp_path)
+    report_metadata["cover_image_path"] = str(cover_image_path)
+
+    assert final_report_artifact_rendering.find_report_cover_image() == cover_image_path
+
+    html_text = render_report_html(report_content(), report_metadata, category_packets())
+    markdown_text = render_report_markdown(report_content(), report_metadata, category_packets())
+    pdf_path = tmp_path / "report.pdf"
+    final_report_artifact_rendering.render_report_pdf_with_reportlab(
+        report_content(),
+        report_metadata,
+        category_packets(),
+        pdf_path,
+    )
+
+    pdf_reader = PdfReader(pdf_path)
+    cover_page = pdf_reader.pages[0]
+
+    assert "data:image/png;base64," in html_text
+    assert 'class="cover-image"' in html_text
+    assert "Report ID" not in html_text
+    assert "Report ID" not in markdown_text
+    assert '"report_id"' not in html_text
+    assert len(cover_page.images) == 1
+    assert "Report ID" not in cover_page.extract_text()
+
+
 def test_pdf_renderer_uses_reportlab_by_default(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("SCHOOL_VALIDATOR_PDF_RENDERER", raising=False)
     pdf_path = tmp_path / "report.pdf"

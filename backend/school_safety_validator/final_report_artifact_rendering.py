@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import html
 import io
@@ -15,7 +16,7 @@ from .final_report_artifact_validation import validate_rendered_report
 from .final_verdict_aggregation import final_report_output_root
 from .inspection_data_models import FinalReportContent
 from .logging_config import logging
-from .inspection_runtime_settings import ValidatorSettings
+from .inspection_runtime_settings import BACKEND_ROOT, ValidatorSettings
 
 
 logger = logging.getLogger(__name__)
@@ -37,9 +38,27 @@ STANDARD_LIMITATIONS = [
 
 
 def find_report_cover_image() -> Path | None:
-    """Return no decorative cover image for the cautious final report."""
+    """Return the bundled report cover image when it is available."""
 
-    return None
+    cover_image_path = BACKEND_ROOT / "utility_files" / "report_img" / "sample_report_image.png"
+    return cover_image_path if cover_image_path.is_file() else None
+
+
+def image_path_to_data_url(image_path: str) -> str:
+    """Return a local image as an HTML data URL for PDF-safe rendering."""
+
+    path = Path(image_path)
+    mime_types = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }
+    mime_type = mime_types.get(path.suffix.lower())
+    if not mime_type or not path.is_file():
+        return ""
+    encoded_image = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded_image}"
 
 
 def status_label(value: str) -> str:
@@ -67,7 +86,6 @@ def build_report_appendix(metadata: dict) -> dict:
     """Return the machine-readable report appendix."""
 
     return {
-        "report_id": metadata.get("report_id", ""),
         "final_aggregation_json": Path(metadata["final_aggregation_json_path"]).name,
         "report_content_json": Path(metadata["report_content_json_path"]).name,
         "models": metadata["models"],
@@ -177,15 +195,6 @@ def source_file_label(item: dict) -> str:
     if source_type:
         return f"{category}: {source_name} ({source_type})"
     return f"{category}: {source_name}"
-
-
-def display_report_id(report_id: str) -> str:
-    """Return a compact report ID for page display."""
-
-    cleaned_report_id = str(report_id or "").strip()
-    if len(cleaned_report_id) > 16:
-        return cleaned_report_id[:12]
-    return cleaned_report_id
 
 
 def build_category_table_rows(content: FinalReportContent, category_packets: list[dict]) -> list[dict]:
@@ -384,8 +393,7 @@ def build_report_view_model(content: FinalReportContent, metadata: dict, categor
     return {
         "title": content.title,
         "report_status_label": REPORT_STATUS_LABEL,
-        "report_id": metadata.get("report_id", ""),
-        "report_id_label": display_report_id(metadata.get("report_id", "")),
+        "cover_image_url": image_path_to_data_url(str(metadata.get("cover_image_path", ""))),
         "provisional": content.provisional,
         "not_inspected_categories": not_inspected_categories,
         "total_images": metadata["total_images"],
@@ -487,7 +495,6 @@ def render_report_markdown(content: FinalReportContent, metadata: dict, category
             f"# {content.title}",
             "## Status Dashboard\n\n"
             f"- Report status: {view['report_status_label']}\n"
-            f"- Report ID: {view['report_id_label'] or 'Not available'}\n"
             f"- Categories not inspected: {len(view['not_inspected_categories'])}\n"
             f"- Total images: {view['total_images']}\n"
             f"- Deterministic status floor: {view['deterministic_status_floor_label']}",
@@ -581,10 +588,12 @@ pre { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
 .cover-kicker { color: #f0c76a; font-size: 9pt; font-weight: 700; letter-spacing: .11em; margin-bottom: 7mm; text-transform: uppercase; }
 .cover h1 { color: #fff8e8; font-size: 30pt; max-width: 160mm; }
 .cover-subtitle { color: #f5e8c8; font-size: 12.5pt; margin-top: 6mm; max-width: 150mm; }
-.cover-grid { display: grid; gap: 5mm; grid-template-columns: minmax(0, .9fr) minmax(0, 1.35fr) minmax(0, .75fr); margin-top: 12mm; }
+.cover-grid { display: grid; gap: 5mm; grid-template-columns: minmax(0, 1.35fr) minmax(0, .75fr); margin-top: 12mm; }
 .cover-panel { background: rgba(58, 43, 29, .28); border: 1px solid rgba(255,244,214,.36); border-radius: 8px; min-height: 24mm; padding: 5mm; }
 .cover-label { color: #f4d58d; font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .cover-value { color: #fffaf0; font-size: 11.5pt; font-weight: 700; line-height: 1.25; margin-top: 2mm; overflow-wrap: break-word; }
+.cover-image { background: rgba(58, 43, 29, .22); border: 1px solid rgba(255,244,214,.36); border-radius: 8px; margin-top: 8mm; overflow: hidden; }
+.cover-image img { display: block; height: 78mm; object-fit: cover; width: 100%; }
 .cover-footer { bottom: 17mm; color: #f5e8c8; font-size: 8.8pt; left: 21mm; position: absolute; right: 21mm; }
 .report-header { border-bottom: 3px solid #7b6f38; margin-bottom: 6mm; padding-bottom: 4mm; }
 .report-header h1 { font-size: 21pt; margin-bottom: 2mm; }
@@ -627,10 +636,10 @@ pre { background: #f5f7df; border: 1px solid #d8c8a7; border-radius: 6px; paddin
   <h1>{{ view.title }}</h1>
   <p class="cover-subtitle">A simple summary of what was visible in the submitted inspection images. This is not a safety or compliance certificate.</p>
   <div class="cover-grid">
-    <div class="cover-panel"><div class="cover-label">Report ID</div><div class="cover-value">{{ view.report_id_label or "Not available" }}</div></div>
     <div class="cover-panel"><div class="cover-label">Report status</div><div class="cover-value">{{ view.report_status_label }}</div></div>
     <div class="cover-panel"><div class="cover-label">Evidence images</div><div class="cover-value">{{ view.total_images }}</div></div>
   </div>
+  {% if view.cover_image_url %}<div class="cover-image"><img src="{{ view.cover_image_url }}" alt="School inspection report illustration"></div>{% endif %}
   <div class="cover-footer">{{ view.disclaimer }}</div>
 </section>
 <main>
@@ -783,7 +792,7 @@ def render_report_pdf_with_reportlab(
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     styles = getSampleStyleSheet()
     styles["Title"].fontName = "Times-Bold"
@@ -923,10 +932,6 @@ def render_report_pdf_with_reportlab(
             [
                 [
                     [
-                        Paragraph("REPORT ID", styles["CoverMetricLabel"]),
-                        Paragraph(reportlab_text(view["report_id_label"] or "Not available"), styles["CoverMetricValue"]),
-                    ],
-                    [
                         Paragraph("REPORT STATUS", styles["CoverMetricLabel"]),
                         Paragraph(reportlab_text(view["report_status_label"]), styles["CoverMetricValue"]),
                     ],
@@ -936,7 +941,7 @@ def render_report_pdf_with_reportlab(
                     ],
                 ],
             ],
-            colWidths=[52 * mm, 76 * mm, 40 * mm],
+            colWidths=[118 * mm, 50 * mm],
             hAlign="LEFT",
             style=[
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#4a4729")),
@@ -952,7 +957,26 @@ def render_report_pdf_with_reportlab(
         Spacer(1, 7 * mm),
     ]
 
-    story.append(Spacer(1, 80 * mm))
+    cover_image_path = Path(str(metadata.get("cover_image_path", "")))
+    if cover_image_path.is_file():
+        cover_image = Image(str(cover_image_path))
+        cover_image_padding = 4
+        cover_image._restrictSize(140 * mm, 99 * mm)
+        cover_image_table = Table(
+            [[cover_image]],
+            colWidths=[cover_image.drawWidth + 2 * cover_image_padding],
+            hAlign="CENTER",
+            style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#3c2c1f")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#938a68")),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), cover_image_padding),
+                ("RIGHTPADDING", (0, 0), (-1, -1), cover_image_padding),
+                ("TOPPADDING", (0, 0), (-1, -1), cover_image_padding),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), cover_image_padding),
+            ],
+        )
+        story.extend([cover_image_table, Spacer(1, 8 * mm)])
 
     story.extend(
         [
@@ -1153,8 +1177,6 @@ def render_report_pdf_with_reportlab(
         canvas.rect(0, 0, page_width, page_height, stroke=0, fill=1)
         canvas.setFillColor(colors.HexColor("#7a684f"))
         canvas.setFont("Helvetica", 8)
-        report_id = view["report_id_label"] or "report"
-        canvas.drawString(20 * mm, 11 * mm, f"Report ID: {report_id}")
         canvas.drawRightString(page_width - 20 * mm, 11 * mm, f"Page {canvas.getPageNumber()}")
         canvas.restoreState()
 
