@@ -58,35 +58,21 @@ Known limits:
 
 ```mermaid
 flowchart TD
-    User["Select sections<br/>and upload images"] --> API["FastAPI run"]
-    API --> Validate["Validate inputs"]
-    Validate --> Ready{"Images for<br/>all sections?"}
-    Ready -- "No" --> InputStatus["Show missing<br/>sections"]
-    Ready -- "Yes" --> Start["Start assessment"]
+    User["Upload inspection images<br/>and comments"] --> Validate["Validate required sections"]
+    Validate --> Privacy["Privacy preprocessing"]
+    Privacy --> Assessment["VLM assessment"]
 
-    Start --> Prepare["Prepare images"]
-    Prepare --> Privacy["Privacy<br/>preprocessing"]
-    Privacy --> Primary["Gemini<br/>primary VLM"]
-    Primary --> PrimaryUsable{"Usable<br/>result?"}
-    PrimaryUsable -- "No" --> Backup["OpenAI<br/>backup VLM"]
-    PrimaryUsable -- "Yes" --> ReviewCheck{"Secondary model<br/>review needed?"}
-    Backup --> ReviewCheck
-    ReviewCheck -- "Yes" --> ReviewModel["Secondary model review<br/>OpenAI gpt-4.1-mini"]
-    ReviewCheck -- "No" --> Outputs["Assessment<br/>outputs"]
-    ReviewModel --> Outputs
+    Assessment --> ModelCheck{"Fallback or additional<br/>model review needed?"}
+    ModelCheck -- "Yes" --> ModelReview["Additional model review"]
+    ModelCheck -- "No" --> ReviewGate{"Human review<br/>required?"}
+    ModelReview --> ReviewGate
 
-    Outputs --> Queue{"Human review<br/>required?"}
-    Queue -- "Yes" --> HumanReview["Human review<br/>in UI"]
-    Queue -- "No" --> ReadyReport["Ready for final report"]
-    HumanReview --> Gate{"All items<br/>reviewed?"}
-    Gate -- "No" --> HumanReview
-    Gate -- "Yes" --> ReadyReport
+    ReviewGate -- "Yes" --> HumanReview["Human review"]
+    ReviewGate -- "No" --> Aggregate["Validate and aggregate findings"]
+    HumanReview --> Aggregate
 
-    ReadyReport --> FinalizeReport["Finalize report"]
-    FinalizeReport --> Rollup["Deterministic<br/>rollup"]
-    Rollup --> Aggregation["Final aggregation<br/>LLM"]
-    Aggregation --> ReportContent["Report-content LLM<br/>gpt-4.1-mini"]
-    ReportContent --> Artifacts["Final report<br/>artifacts"]
+    Aggregate --> Report["Generate structured report"]
+    Report --> Artifacts["PDF, HTML, and JSON artifacts"]
 ```
 
 ## API And Frontend Flow
