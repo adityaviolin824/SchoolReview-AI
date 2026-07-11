@@ -4,6 +4,8 @@ SchoolReview AI is a local-first prototype for reviewing school inspection evide
 
 The output is limited to visible evidence. It does not certify safety, compliance, structural soundness, electrical safety, or serviceability. The goal is to organize evidence, surface mismatches, preserve an audit trail, and make review easier.
 
+**Product Tour:** [View the screenshot walkthrough](product-tour/).
+
 The implementation currently combines:
 
 * privacy-aware image preprocessing before model calls,
