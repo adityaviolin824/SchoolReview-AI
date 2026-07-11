@@ -31,6 +31,13 @@ export default function App() {
     window.location.hash = `/${nextRoute}`;
     setRoute(nextRoute);
   };
+  const startNewInspection = () => {
+    if (controller.busy) {
+      return;
+    }
+    controller.resetInspectionDraft();
+    navigate("new-inspection");
+  };
   const attentionRoute: AppRoute | null = controller.reviewRequired
     ? "human-review"
     : controller.reportReady || controller.reportGenerating || controller.completedWithArtifacts
@@ -49,7 +56,14 @@ export default function App() {
   }, [controller.actionPrompt, controller.dismissActionPrompt, route]);
 
   return (
-    <AppShell route={route} attentionRoute={attentionRoute} routeBadges={routeBadges} onNavigate={navigate}>
+    <AppShell
+      route={route}
+      attentionRoute={attentionRoute}
+      routeBadges={routeBadges}
+      onNavigate={navigate}
+      onStartNewInspection={startNewInspection}
+      newInspectionDisabled={controller.busy}
+    >
       <NoticeStack message={controller.message} error={controller.error} />
       <RunStatusPanel controller={controller} onNavigate={navigate} />
       {actionPrompt ? (
@@ -62,7 +76,9 @@ export default function App() {
           onDismiss={controller.dismissActionPrompt}
         />
       ) : null}
-      {route === "overview" && <OverviewPage controller={controller} onNavigate={navigate} />}
+      {route === "overview" && (
+        <OverviewPage controller={controller} onNavigate={navigate} onStartNewInspection={startNewInspection} />
+      )}
       {route === "new-inspection" && <NewInspectionPage controller={controller} />}
       {route === "human-review" && <HumanReviewPage controller={controller} onNavigate={navigate} />}
       {route === "reports" && <ReportsPage controller={controller} />}

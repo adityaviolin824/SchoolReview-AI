@@ -6,6 +6,8 @@ type AppShellProps = {
   attentionRoute?: AppRoute | null;
   routeBadges?: Partial<Record<AppRoute, number | string>>;
   onNavigate: (route: AppRoute) => void;
+  onStartNewInspection: () => void;
+  newInspectionDisabled: boolean;
   children: ReactNode;
 };
 
@@ -32,7 +34,15 @@ function RouteIcon({ route }: { route: AppRoute }) {
   );
 }
 
-export function AppShell({ route, attentionRoute = null, routeBadges = {}, onNavigate, children }: AppShellProps) {
+export function AppShell({
+  route,
+  attentionRoute = null,
+  routeBadges = {},
+  onNavigate,
+  onStartNewInspection,
+  newInspectionDisabled,
+  children,
+}: AppShellProps) {
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -56,7 +66,13 @@ export function AppShell({ route, attentionRoute = null, routeBadges = {}, onNav
               .join(" ");
 
             return (
-              <button key={item.id} type="button" className={classes} onClick={() => onNavigate(item.id)}>
+              <button
+                key={item.id}
+                type="button"
+                className={classes}
+                onClick={() => (item.id === "new-inspection" ? onStartNewInspection() : onNavigate(item.id))}
+                disabled={item.id === "new-inspection" && newInspectionDisabled}
+              >
                 <RouteIcon route={item.id} />
                 <span>{item.label}</span>
                 {badge ? <strong className="nav-badge">{badge}</strong> : null}

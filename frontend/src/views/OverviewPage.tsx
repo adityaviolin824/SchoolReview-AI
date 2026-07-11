@@ -6,6 +6,7 @@ import type { AppRoute } from "../routing";
 type OverviewPageProps = {
   controller: InspectionRunController;
   onNavigate: (route: AppRoute) => void;
+  onStartNewInspection: () => void;
 };
 
 function ListLine({ label, values }: { label: string; values: string[] }) {
@@ -17,7 +18,7 @@ function ListLine({ label, values }: { label: string; values: string[] }) {
   );
 }
 
-export function OverviewPage({ controller, onNavigate }: OverviewPageProps) {
+export function OverviewPage({ controller, onNavigate, onStartNewInspection }: OverviewPageProps) {
   const { runStatus } = controller;
   const categoryEntries = Object.entries(runStatus?.category_summaries ?? {}).sort(([left], [right]) =>
     left.localeCompare(right),
@@ -56,7 +57,7 @@ export function OverviewPage({ controller, onNavigate }: OverviewPageProps) {
           <p>Upload inspection evidence, start model assessment, review flagged items, and generate the report.</p>
         </div>
         <div className="hero-actions">
-          <button type="button" className="primary-action" onClick={() => onNavigate("new-inspection")}>
+          <button type="button" className="primary-action" onClick={onStartNewInspection} disabled={controller.busy}>
             New Inspection
           </button>
           <button type="button" onClick={controller.refreshStatus} disabled={!controller.runId || controller.busy}>

@@ -16,7 +16,11 @@ from school_safety_validator.inspection_runtime_settings import BACKEND_ROOT
 from .inspection_api_routes import cleanup_old_api_runs, router
 
 
-LOCAL_FRONTEND_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
+LOCAL_FRONTEND_ORIGINS = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:5174",
+]
 FRONTEND_DIST_DIR = BACKEND_ROOT / "static" / "frontend"
 
 

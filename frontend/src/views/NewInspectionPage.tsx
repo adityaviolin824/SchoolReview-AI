@@ -111,6 +111,7 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
                     onChange={(event) => controller.updateSectionForm(name, { sectionComment: event.target.value })}
                     disabled={controller.busy || Boolean(controller.runId)}
                     aria-label={`${formatSectionName(name)} section comment`}
+                    placeholder="Enter category-level comments (optional)"
                   />
                 )}
               </article>
@@ -148,6 +149,7 @@ export function NewInspectionPage({ controller }: NewInspectionPageProps) {
                       value={form.imageComment}
                       onChange={(event) => controller.updateSectionForm(name, { imageComment: event.target.value })}
                       disabled={uploadDisabled}
+                      placeholder="Enter image-specific comments (optional)"
                     />
                   </label>
                   <label className="file-input">

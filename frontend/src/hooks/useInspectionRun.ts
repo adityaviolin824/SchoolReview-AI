@@ -58,8 +58,8 @@ function createInitialSectionForms(): SectionFormStateMap {
   for (const name of SECTION_NAMES) {
     forms[name] = {
       selected: name === "classroom",
-      sectionComment: `${formatSectionName(name)} inspection comments.`,
-      imageComment: "Enter comments for image here",
+      sectionComment: "",
+      imageComment: "",
       selectedFiles: [],
       uploadedImages: [],
     };

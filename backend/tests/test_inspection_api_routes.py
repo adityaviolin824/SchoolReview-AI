@@ -100,16 +100,21 @@ def test_fastapi_lifespan_runs_api_cleanup(monkeypatch) -> None:
 def test_cors_allows_local_vite_frontend() -> None:
     client = TestClient(create_app())
 
-    response = client.options(
-        "/inspection-runs",
-        headers={
-            "Origin": "http://127.0.0.1:5173",
-            "Access-Control-Request-Method": "POST",
-        },
-    )
+    for origin in (
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5174",
+    ):
+        response = client.options(
+            "/inspection-runs",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
 
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == origin
 
 
 def test_start_request_schema_defaults_to_assessment_only() -> None:
