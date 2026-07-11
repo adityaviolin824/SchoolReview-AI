@@ -8,55 +8,55 @@ This tour uses one complete inspection run with four selected categories and sev
 
 The workflow begins with the inspection context and the categories to include. Category-level comments are optional: the on-screen prompts are placeholders, so a blank field stays blank unless an inspector enters text. This keeps submitted context intentional and traceable.
 
-![New inspection setup with school details, category selection, and optional category comments](./1.jpeg)
+![New inspection setup with school details, category selection, and optional category comments](./Screenshots/1.jpeg)
 
 ## 2. Upload evidence and add image comments
 
 After creating the inspection, each selected category needs at least one JPG or PNG evidence image. Inspectors can add an optional comment for each image, select multiple files where needed, and see which categories are still missing evidence before assessment can begin.
 
-![Evidence upload workspace with category rows, optional image comments, file selections, and readiness status](./2.jpeg)
+![Evidence upload workspace with category rows, optional image comments, file selections, and readiness status](./Screenshots/2.jpeg)
 
 ## 3. Route uncertain evidence to human review
 
 The assessment can identify evidence that needs qualified human judgment before reporting continues. The application surfaces that requirement immediately, shows the pending-review count in navigation, and directs the user to the review workspace.
 
-![Human review prompt after the assessment flags an item for review](./4.jpeg)
+![Human review prompt after the assessment flags an item for review](./Screenshots/4.jpeg)
 
 ## 4. Review the evidence in context
 
 The human-review workspace brings together the inspection image, model findings, uncertainty notes, recommended action, and the reviewer comment. The reviewer can then record a decision before the report workflow moves forward.
 
-![Human review workspace showing a fire extinguisher image, model inference, visible findings, uncertainty notes, and reviewer comment](./5.jpeg)
+![Human review workspace showing a fire extinguisher image, model inference, visible findings, uncertainty notes, and reviewer comment](./Screenshots/5.jpeg)
 
 ## 5. Unlock report generation after review
 
 Once required review items are completed, the application makes the next step explicit: generate the final report. This prevents report creation from bypassing the human-review gate.
 
-![Report-generation prompt after the required human review is completed](./6.jpeg)
+![Report-generation prompt after the required human review is completed](./Screenshots/6.jpeg)
 
 ## 6. Track report generation
 
 The Reports page shows that generation is running, keeps the review and image counts visible, and refreshes automatically while report artifacts are prepared. It also preserves the processed and not-inspected category context.
 
-![Reports page while final report generation is in progress](./7.jpeg)
+![Reports page while final report generation is in progress](./Screenshots/7.jpeg)
 
 ## 7. Download completed report artifacts
 
 When generation completes, the report status, overall outcome, artifact count, and download links are all available in one place. This run produced HTML, Markdown, PDF, report-content JSON, and the report-generation payload.
 
-![Completed reports page with urgent-review outcome and five downloadable artifacts](./8.jpeg)
+![Completed reports page with urgent-review outcome and five downloadable artifacts](./Screenshots/8.jpeg)
 
 ## 8. Inspect the generated PDF summary
 
 The generated PDF opens with a visual-inspection summary and an explicit qualified-review boundary. The report records the evidence-image count and carries the limitation that the output is not a certification.
 
-![Generated PDF cover page for the school inspection summary report](./9.jpeg)
+![Generated PDF cover page for the school inspection summary report](./Screenshots/9.jpeg)
 
 ## 9. Review category-level actions
 
 Later PDF pages consolidate the category statuses, evidence IDs, review flags, and prioritized actions. This gives a reviewer a compact path from the submitted visual evidence to follow-up work.
 
-![Generated PDF category summary table and priority actions](./10.jpeg)
+![Generated PDF category summary table and priority actions](./Screenshots/10.jpeg)
 
 ## What This Demonstrates
 
