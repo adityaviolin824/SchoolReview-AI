@@ -1,6 +1,8 @@
-# Final Review Pass: Terra XHigh
+# Review Notes: Terra XHigh
 
 Date: 2026-07-10
+
+> Historical review note. Several findings recorded below were resolved after this review. Refer to the root README for the current project status.
 
 ## Scope And Outcome
 
