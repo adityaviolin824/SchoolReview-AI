@@ -48,7 +48,7 @@ When the report is ready, the page shows the result and provides download links.
 
 ## 8. Open the PDF summary
 
-The PDF starts with a summary of the inspection and the number of photos used. It also states clearly that the report is not a safety or compliance certificate.
+The PDF starts with a summary of the inspection and the number of photos used. 
 
 ![Generated PDF cover page for the school inspection summary report](./Screenshots/9.jpeg)
 
